@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f6fbfb;
+  color: #0f172a;
+  --safe-green: #19D09C;
+  --safe-dark: #073B4C;
+  --safe-blue: #0A7C86;
+  --safe-purple: #7168D9;
+  --safe-red: #D90446;
+  --safe-yellow: #FFB703;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(25, 208, 156, 0.14), transparent 32rem),
+    radial-gradient(circle at bottom right, rgba(113, 104, 217, 0.12), transparent 28rem),
+    #f6fbfb;
+}
+
+button, a { -webkit-tap-highlight-color: transparent; }
+
+input, select, textarea { outline: none; }
+
+.safe-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.safe-scrollbar::-webkit-scrollbar-thumb { background: rgba(7,59,76,.22); border-radius: 999px; }
+.safe-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
+
+/* Tema escuro global: mantém compatibilidade com as telas existentes sem reescrever todos os componentes. */
+html.dark {
+  background: #151515;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background:
+    radial-gradient(circle at top left, rgba(25, 208, 156, 0.12), transparent 32rem),
+    radial-gradient(circle at bottom right, rgba(113, 104, 217, 0.10), transparent 28rem),
+    #151515;
+  color: #f8fafc;
+}
+
+html.dark .bg-white { background-color: #202020 !important; }
+html.dark .bg-white\/85 { background-color: rgba(32, 32, 32, 0.90) !important; }
+html.dark .bg-white\/90 { background-color: rgba(32, 32, 32, 0.95) !important; }
+html.dark .bg-white\/95 { background-color: rgba(32, 32, 32, 0.96) !important; }
+html.dark .bg-slate-50 { background-color: #171717 !important; }
+html.dark .bg-slate-100 { background-color: #2b2b2b !important; }
+html.dark .bg-safe-soft { background-color: #12362f !important; }
+html.dark .bg-purple-50 { background-color: rgba(113, 104, 217, 0.18) !important; }
+html.dark .bg-red-50 { background-color: rgba(127, 29, 29, 0.35) !important; }
+html.dark .bg-yellow-100 { background-color: rgba(133, 77, 14, 0.35) !important; }
+html.dark .bg-red-100 { background-color: rgba(127, 29, 29, 0.38) !important; }
+
+html.dark .text-safe-dark,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700,
+html.dark .text-slate-600 { color: #f8fafc !important; }
+html.dark .text-slate-500,
+html.dark .text-slate-400 { color: #cbd5e1 !important; }
+html.dark .text-safe-blue { color: #5eead4 !important; }
+html.dark .text-purple-700 { color: #c4b5fd !important; }
+html.dark .text-red-700,
+html.dark .text-red-600,
+html.dark .text-red-800 { color: #fecaca !important; }
+html.dark .text-yellow-800,
+html.dark .text-yellow-900 { color: #fef3c7 !important; }
+
+html.dark .border-slate-200,
+html.dark .border-white\/70,
+html.dark .border-white\/60 { border-color: rgba(255, 255, 255, 0.10) !important; }
+html.dark .shadow-soft { box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28) !important; }
+html.dark .shadow-app { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.38) !important; }
+html.dark input,
+html.dark select,
+html.dark textarea { color: #f8fafc; }
+html.dark option { background: #202020; color: #fff; }

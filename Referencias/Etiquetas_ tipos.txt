@@ -1,0 +1,7 @@
+[ ] Produção (alimentos manipulados, por exemplo sobremesas, saladas,.molhos)
+[ ] Descongelamento/dessalgue
+[ ] Armazenamento de carnes (rastreabilidade, lote, etc)
+[ ] Reembalagem
+[ ] Produtos abertos
+[ ] Amostras
+[ ] Não conformes (segregados)
