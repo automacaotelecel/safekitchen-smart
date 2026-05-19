@@ -47,58 +47,63 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#f6fbfb]">
-      <div className="absolute inset-x-0 top-0 h-[58vh] bg-safe-gradient" />
-      <div className="absolute left-[-10rem] top-[-10rem] h-80 w-80 rounded-full bg-safe-purple/30 blur-3xl" />
-      <div className="absolute right-[-10rem] top-20 h-96 w-96 rounded-full bg-safe-green/30 blur-3xl" />
+    <div className="min-h-screen overflow-hidden bg-[#021E27] text-white">
+      <div className="absolute inset-x-0 top-0 h-[58vh] bg-[radial-gradient(circle_at_top_right,rgba(0,229,194,0.45),transparent_34rem),linear-gradient(135deg,#052D3A_0%,#0B6F73_48%,#11D5B3_100%)]" />
+      <div className="absolute left-[-10rem] top-[-10rem] h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
+      <div className="absolute right-[-10rem] top-20 h-96 w-96 rounded-full bg-emerald-300/25 blur-3xl" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(34,211,238,0.12)_1px,transparent_1px)] [background-size:18px_18px] opacity-40" />
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center p-4 lg:p-8">
-        <div className="grid w-full overflow-hidden rounded-[2.2rem] bg-white shadow-app lg:grid-cols-[1.15fr_.85fr]">
-          <div className="relative min-h-[560px] overflow-hidden bg-safe-red p-7 text-white lg:p-12">
+        <div className="grid w-full overflow-hidden rounded-[2.2rem] border border-white/10 bg-[#061923] shadow-[0_30px_90px_rgba(0,0,0,0.45)] lg:grid-cols-[1.15fr_.85fr]">
+          <div className="relative min-h-[560px] overflow-hidden bg-[linear-gradient(135deg,rgba(4,37,49,0.96),rgba(5,76,83,0.88)),url('/ref-dark.png')] bg-cover bg-center p-7 text-white lg:p-12">
+            <div className="absolute inset-0 bg-[#021E27]/55" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,229,194,0.25),transparent_22rem)]" />
+
             <div className="relative z-20 flex items-center justify-between gap-4">
               <img
                 src="/safekitchen-logo.png"
                 alt="SafeKitchen Smart"
-                className="h-24 w-24 rounded-3xl bg-white/95 object-contain p-1 shadow-lg"
+                className="h-24 w-24 rounded-3xl bg-white object-contain p-1 shadow-[0_18px_45px_rgba(0,0,0,0.45)]"
               />
             </div>
 
             <div className="relative z-20 mt-12 max-w-xl">
               <h1 className="mt-6 text-4xl font-black leading-[1.05] sm:text-5xl lg:text-6xl">
-                Sua cozinha livre da caneta.
+                Sua cozinha livre da{' '}
+                <span className="text-[#19F5C7]">caneta.</span>
               </h1>
 
-              <p className="mt-6 max-w-md text-lg font-semibold leading-relaxed text-white/90">
+              <p className="mt-6 max-w-md text-lg font-semibold leading-relaxed text-white/85">
                 Etiquetas automáticas, validade calculada e histórico para
                 auditoria sanitária em tablet e celular.
               </p>
 
               <div className="mt-8 grid max-w-md gap-3 sm:grid-cols-2">
-                <div className="rounded-3xl bg-white/12 p-4 backdrop-blur">
-                  <Tags className="text-safe-yellow" />
+                <div className="rounded-3xl border border-white/10 bg-white/8 p-4 backdrop-blur">
+                  <Tags className="text-[#19F5C7]" />
 
                   <p className="mt-3 text-sm font-black">Etiquetas</p>
 
-                  <p className="mt-1 text-xs text-white/75">
+                  <p className="mt-1 text-xs text-white/70">
                     Produto aberto, produção e mais.
                   </p>
                 </div>
 
-                <div className="rounded-3xl bg-white/12 p-4 backdrop-blur">
-                  <CheckCircle2 className="text-safe-yellow" />
+                <div className="rounded-3xl border border-white/10 bg-white/8 p-4 backdrop-blur">
+                  <CheckCircle2 className="text-[#19F5C7]" />
 
                   <p className="mt-3 text-sm font-black">Validade</p>
 
-                  <p className="mt-1 text-xs text-white/75">
+                  <p className="mt-1 text-xs text-white/70">
                     Cálculo automático por regra.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="absolute -bottom-24 right-[-5rem] z-10 hidden h-80 w-[36rem] rotate-[-10deg] rounded-[3rem] border-[16px] border-slate-950 bg-white p-6 shadow-2xl lg:block">
-              <div className="h-full rounded-[2rem] bg-slate-50 p-5">
-                <div className="flex items-center justify-between rounded-2xl bg-safe-green px-4 py-3 text-white">
+            <div className="absolute -bottom-24 right-[-5rem] z-10 hidden h-80 w-[36rem] rotate-[-10deg] rounded-[3rem] border-[16px] border-[#020B13] bg-[#061923] p-6 shadow-2xl lg:block">
+              <div className="h-full rounded-[2rem] bg-[#0B1D26] p-5">
+                <div className="flex items-center justify-between rounded-2xl bg-[linear-gradient(135deg,#1EF0A3,#16C8D6)] px-4 py-3 text-[#031B22]">
                   <span className="text-sm font-black">SafeKitchen Smart</span>
                   <span className="text-xs font-bold">05:47</span>
                 </div>
@@ -114,10 +119,10 @@ export function Login() {
                       key={item}
                       className={`rounded-2xl p-4 shadow-sm ${
                         index === 0
-                          ? 'bg-red-100 text-red-800'
+                          ? 'bg-red-950/70 text-red-100'
                           : index === 1
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-white text-slate-700'
+                            ? 'bg-yellow-900/70 text-yellow-100'
+                            : 'bg-white/10 text-white'
                       }`}
                     >
                       <p className="text-xs font-black uppercase">{item}</p>
@@ -132,74 +137,77 @@ export function Login() {
             </div>
           </div>
 
-          <form onSubmit={submit} className="relative p-6 sm:p-10 lg:p-14">
+          <form
+            onSubmit={submit}
+            className="relative bg-[#071922] p-6 text-white sm:p-10 lg:p-14"
+          >
             <div className="mb-8 lg:hidden">
               <img
                 src="/safekitchen-logo.png"
                 alt="SafeKitchen Smart"
-                className="h-20 w-20 rounded-3xl object-contain"
+                className="h-20 w-20 rounded-3xl bg-white object-contain p-1"
               />
             </div>
 
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-safe-green">
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-[#19F5C7]">
               Acesso seguro
             </p>
 
-            <h2 className="mt-2 text-3xl font-black text-safe-dark">
+            <h2 className="mt-2 text-3xl font-black text-white">
               Entrar no sistema
             </h2>
 
-            <p className="mt-2 text-sm font-semibold text-slate-500">
+            <p className="mt-2 text-sm font-semibold text-white/65">
               Use o acesso demo para testar a primeira versão.
             </p>
 
-            <label className="mt-8 block text-sm font-bold text-slate-700">
+            <label className="mt-8 block text-sm font-bold text-white/85">
               E-mail
             </label>
 
-            <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-safe-green focus-within:bg-white">
-              <Mail size={18} className="text-slate-400" />
+            <div className="mt-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 transition focus-within:border-[#19F5C7] focus-within:bg-black/30">
+              <Mail size={18} className="text-white/55" />
 
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
                 autoComplete="email"
-                className="w-full bg-transparent text-sm font-semibold outline-none"
+                className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/35"
               />
             </div>
 
-            <label className="mt-5 block text-sm font-bold text-slate-700">
+            <label className="mt-5 block text-sm font-bold text-white/85">
               Senha
             </label>
 
-            <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-safe-green focus-within:bg-white">
-              <Lock size={18} className="text-slate-400" />
+            <div className="mt-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 transition focus-within:border-[#19F5C7] focus-within:bg-black/30">
+              <Lock size={18} className="text-white/55" />
 
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
-                className="w-full bg-transparent text-sm font-semibold outline-none"
+                className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/35"
               />
             </div>
 
             {error && (
-              <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
+              <p className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/20 p-3 text-sm font-bold text-red-100">
                 {error}
               </p>
             )}
 
             <button
               disabled={loading}
-              className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-green px-5 py-4 text-sm font-black text-white shadow-lg shadow-emerald-200 transition hover:brightness-95 disabled:opacity-60"
+              className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#35F29E,#18C9D7)] px-5 py-4 text-sm font-black text-[#031B22] shadow-[0_18px_45px_rgba(25,245,199,0.24)] transition hover:brightness-105 disabled:opacity-60"
             >
               {loading ? 'Entrando...' : 'Entrar'}
               <ArrowRight size={18} />
             </button>
 
-            <div className="mt-6 rounded-3xl bg-safe-soft p-4 text-center text-xs font-bold text-safe-dark">
+            <div className="mt-6 rounded-3xl border border-white/10 bg-white/8 p-4 text-center text-xs font-bold text-[#19F5C7]">
               Demo: admin@safekitchen.com.br / 123456
             </div>
           </form>

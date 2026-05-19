@@ -23,7 +23,8 @@ const createLabelSchema = zod_1.z.object({
     quantity: zod_1.z.string().optional().nullable(),
     observations: zod_1.z.string().optional().nullable(),
     manualValidityValue: zod_1.z.number().int().positive().optional().nullable(),
-    manualValidityUnit: zod_1.z.enum(['hours', 'days']).optional().nullable()
+    manualValidityUnit: zod_1.z.enum(['hours', 'days']).optional().nullable(),
+    extraData: zod_1.z.record(zod_1.z.any()).optional().nullable()
 });
 const batchPdfSchema = zod_1.z.object({
     items: zod_1.z.array(zod_1.z.object({
@@ -35,6 +36,8 @@ async function calculateExpiration(input) {
     const openedAt = new Date(input.openedAt);
     if (input.type === 'NAO_CONFORME')
         return null;
+    if (input.type === 'AMOSTRAS')
+        return (0, date_fns_1.addHours)(openedAt, 72);
     if (input.manualValidityValue && input.manualValidityUnit) {
         return input.manualValidityUnit === 'hours'
             ? (0, date_fns_1.addHours)(openedAt, input.manualValidityValue)
@@ -94,6 +97,21 @@ router.post('/', async (req, res) => {
     if (!parsed.success)
         return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
     const expiresAt = await calculateExpiration(parsed.data);
+    const restaurant = await prisma_1.prisma.restaurant.findUnique({
+        where: { id: req.user.restaurantId },
+        select: { name: true }
+    });
+    const normalizedExtraData = {
+        ...(parsed.data.extraData || {}),
+        ...(parsed.data.type === 'AMOSTRAS'
+            ? {
+                restaurantName: parsed.data.extraData?.restaurantName ||
+                    restaurant?.name ||
+                    'Restaurante',
+                discardAt: expiresAt ? expiresAt.toISOString() : null
+            }
+            : {})
+    };
     const label = await prisma_1.prisma.label.create({
         data: {
             restaurantId: req.user.restaurantId,
@@ -109,7 +127,8 @@ router.post('/', async (req, res) => {
             expiresAt,
             quantity: parsed.data.quantity || null,
             responsibleName: parsed.data.responsibleName,
-            observations: parsed.data.observations || null
+            observations: parsed.data.observations || null,
+            extraData: Object.keys(normalizedExtraData).length ? JSON.stringify(normalizedExtraData) : null
         }
     });
     return (0, http_1.ok)(res, label, 201);

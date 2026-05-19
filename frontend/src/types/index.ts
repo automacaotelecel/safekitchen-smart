@@ -57,6 +57,7 @@ export type Label = {
   quantity?: string | null;
   responsibleName: string;
   observations?: string | null;
+  extraData?: string | null;
   status: string;
   createdAt: string;
 };

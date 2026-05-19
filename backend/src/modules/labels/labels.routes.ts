@@ -23,7 +23,8 @@ const createLabelSchema = z.object({
   quantity: z.string().optional().nullable(),
   observations: z.string().optional().nullable(),
   manualValidityValue: z.number().int().positive().optional().nullable(),
-  manualValidityUnit: z.enum(['hours', 'days']).optional().nullable()
+  manualValidityUnit: z.enum(['hours', 'days']).optional().nullable(),
+  extraData: z.record(z.any()).optional().nullable()
 });
 
 const batchPdfSchema = z.object({
@@ -37,6 +38,7 @@ async function calculateExpiration(input: z.infer<typeof createLabelSchema>) {
   const openedAt = new Date(input.openedAt);
 
   if (input.type === 'NAO_CONFORME') return null;
+  if (input.type === 'AMOSTRAS') return addHours(openedAt, 72);
 
   if (input.manualValidityValue && input.manualValidityUnit) {
     return input.manualValidityUnit === 'hours'
@@ -100,6 +102,24 @@ router.post('/', async (req, res) => {
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
 
   const expiresAt = await calculateExpiration(parsed.data);
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: req.user.restaurantId },
+    select: { name: true }
+  });
+
+  const normalizedExtraData = {
+    ...(parsed.data.extraData || {}),
+    ...(parsed.data.type === 'AMOSTRAS'
+      ? {
+          restaurantName:
+            (parsed.data.extraData as any)?.restaurantName ||
+            restaurant?.name ||
+            'Restaurante',
+          discardAt: expiresAt ? expiresAt.toISOString() : null
+        }
+      : {})
+  };
+
   const label = await prisma.label.create({
     data: {
       restaurantId: req.user.restaurantId,
@@ -115,7 +135,8 @@ router.post('/', async (req, res) => {
       expiresAt,
       quantity: parsed.data.quantity || null,
       responsibleName: parsed.data.responsibleName,
-      observations: parsed.data.observations || null
+      observations: parsed.data.observations || null,
+      extraData: Object.keys(normalizedExtraData).length ? JSON.stringify(normalizedExtraData) : null
     }
   });
 

@@ -1,0 +1,1 @@
+ALTER TABLE "Label" ADD COLUMN "extraData" TEXT;

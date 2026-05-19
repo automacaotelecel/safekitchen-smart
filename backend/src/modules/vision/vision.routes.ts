@@ -128,11 +128,11 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
   });
 
   const ranked = products
-    .map((product) => ({
+    .map((product: (typeof products)[number]) => ({
       product,
       score: scoreProduct(product, suggestion),
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
 
   const best = ranked[0];
 

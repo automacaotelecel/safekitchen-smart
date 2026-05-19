@@ -16,41 +16,62 @@ export type LabelCopy = {
   quantity?: string | null;
   responsibleName: string;
   observations?: string | null;
+  extraData?: string | null;
   createdAt?: Date | null;
 };
 
-function brDate(date: Date | null) {
+type ExtraData = Record<string, any>;
+
+function extra(label: LabelCopy): ExtraData {
+  if (!label.extraData) return {};
+  try {
+    const parsed = JSON.parse(label.extraData);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function brDate(date?: Date | string | null) {
   if (!date) return '__/__/____';
-  return format(date, 'dd/MM/yyyy');
+  const finalDate = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(finalDate.getTime())) return '__/__/____';
+  return format(finalDate, 'dd/MM/yyyy');
 }
 
-function brTime(date: Date | null) {
+function brTime(date?: Date | string | null) {
   if (!date) return '__:__';
-  return format(date, 'HH:mm');
+  const finalDate = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(finalDate.getTime())) return '__:__';
+  return format(finalDate, 'HH:mm');
 }
 
-function textOrLine(value?: string | null) {
-  return value && value.trim() ? value.trim() : '________________';
+function textOrLine(value?: string | null, fallback = '________________') {
+  return value && value.trim() ? value.trim() : fallback;
 }
 
-function firstLine(value?: string | null, fallback = '________________') {
+function firstLine(value?: string | null, fallback = '________________', max = 38) {
   const finalValue = value && value.trim() ? value.trim() : fallback;
-  return finalValue.length > 38 ? `${finalValue.slice(0, 35)}...` : finalValue;
+  return finalValue.length > max ? `${finalValue.slice(0, max - 3)}...` : finalValue;
 }
 
 function modeCheck(mode: ConservationMode, expected: ConservationMode) {
   return String(mode).toUpperCase() === String(expected).toUpperCase() ? 'X' : ' ';
 }
 
+function checkList(values: unknown, expected: string) {
+  return Array.isArray(values) && values.includes(expected) ? 'X' : ' ';
+}
+
 function labelHeader(type: string) {
   const map: Record<string, string> = {
-    PRODUTO_ABERTO: 'FOR PROD 12 - 02   ETIQUETA DE IDENTIFICAÇÃO DE PRODUTO',
-    PRODUCAO: 'FOR PROD 12 - 02   ETIQUETA DE IDENTIFICAÇÃO DE PRODUTO',
-    REEMBALAGEM: 'FOR PROD 12 - 02   ETIQUETA DE IDENTIFICAÇÃO DE PRODUTO',
-    ARMAZENAMENTO_CARNES: 'FOR PROD 12 - 02   ETIQUETA DE IDENTIFICAÇÃO DE PRODUTO',
-    AMOSTRAS: 'FOR PROD 12 - 02   ETIQUETA DE IDENTIFICAÇÃO DE PRODUTO',
-    NAO_CONFORME: 'ETIQUETA DE PRODUTO NÃO CONFORME',
-    DESCONGELAMENTO_DESSALGUE: 'FOR PROD 16 - 01   ETIQUETA DE IDENTIFICAÇÃO EM DESCONGELAMENTO E DESSALGUE',
+    PRODUTO_ABERTO: 'ETIQUETA DE PRODUTO ABERTO',
+    PRODUCAO: 'ETIQUETA DE PRODUÇÃO',
+    REEMBALAGEM: 'ETIQUETA DE REEMBALAGEM',
+    ARMAZENAMENTO_CARNES: 'ETIQUETA DE ARMAZENAMENTO DE CARNES',
+    AMOSTRAS: 'ETIQUETA DE AMOSTRAS',
+    NAO_CONFORME: 'PRODUTO SEGREGADO — NÃO CONFORME',
+    DESCONGELAMENTO_DESSALGUE: 'ETIQUETA DE DESCONGELAMENTO/DESSALGUE',
     PRODUTO_QUIMICO: 'FOR PROD 36 - 01   ETIQUETA DE PRODUTO QUÍMICO',
   };
 
@@ -65,11 +86,19 @@ function isThawing(label: LabelCopy) {
   return label.type === 'DESCONGELAMENTO_DESSALGUE';
 }
 
+function isNonConform(label: LabelCopy) {
+  return label.type === 'NAO_CONFORME';
+}
+
+function isSample(label: LabelCopy) {
+  return label.type === 'AMOSTRAS';
+}
+
 function drawDocumentHeader(doc: PDFKit.PDFDocument, type: string) {
   doc.save();
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#008f86').text('SafeKitchen Smart', 32, 28);
   doc.font('Helvetica').fontSize(6).fillColor('#666').text('Tecnologia • Controle • Segurança', 32, 42);
-  doc.font('Helvetica-Bold').fontSize(16).fillColor('#111').text(labelHeader(type), 245, 28, {
+  doc.font('Helvetica-Bold').fontSize(15).fillColor('#111').text(labelHeader(type), 245, 28, {
     width: 550,
     align: 'right',
   });
@@ -86,7 +115,7 @@ function drawBrandMark(doc: PDFKit.PDFDocument, x: number, y: number, w: number)
   doc.restore();
 }
 
-function drawFieldLine(
+function line(
   doc: PDFKit.PDFDocument,
   label: string,
   value: string,
@@ -108,22 +137,133 @@ function drawFieldLine(
     lineBreak: false,
   });
 
-  doc.moveTo(x + labelWidth, y + fontSize + 2).lineTo(x + labelWidth + valueWidth, y + fontSize + 2).strokeColor('#888').lineWidth(0.4).stroke();
+  doc
+    .moveTo(x + labelWidth, y + fontSize + 2)
+    .lineTo(x + labelWidth + valueWidth, y + fontSize + 2)
+    .strokeColor('#888')
+    .lineWidth(0.4)
+    .stroke();
 }
 
-function drawProductLikeLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+function checkbox(doc: PDFKit.PDFDocument, checked: string, text: string, x: number, y: number, width = 70) {
+  doc.font('Helvetica').fontSize(5.8).fillColor('#111').text(`(${checked}) ${text}`, x, y, {
+    width,
+    lineBreak: false,
+  });
+}
+
+function title(doc: PDFKit.PDFDocument, text: string, x: number, y: number, w: number) {
+  doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#111').text(text, x, y, {
+    width: w,
+    lineBreak: false,
+  });
+}
+
+function drawNonConformLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+  const data = extra(label);
+  doc.save();
+  doc.roundedRect(x, y, w, h, 7).strokeColor('#9b1c1c').lineWidth(1).stroke();
+  drawBrandMark(doc, x, y, w);
+
+  title(doc, 'PRODUTO SEGREGADO — NÃO CONFORME', x + 6, y + 7, w - 35);
+  line(doc, 'Produto:', firstLine(label.productName, '________________', 31), x + 6, y + 22, { labelWidth: 29, valueWidth: w - 44 });
+  line(doc, 'Lote:', textOrLine(label.batch), x + 6, y + 35, { labelWidth: 21, valueWidth: 58 });
+
+  doc.font('Helvetica-Bold').fontSize(6.2).fillColor('#333').text('Não conformidade:', x + 6, y + 49);
+  checkbox(doc, checkList(data.nonConformities, 'Vencido'), 'Vencido', x + 6, y + 62);
+  checkbox(doc, checkList(data.nonConformities, 'Temperatura inadequada'), 'Temp. inadequada', x + 68, y + 62, 90);
+  checkbox(doc, checkList(data.nonConformities, 'Embalagem violada'), 'Emb. violada', x + 6, y + 74);
+  checkbox(doc, checkList(data.nonConformities, 'Contaminação'), 'Contaminação', x + 68, y + 74, 80);
+  checkbox(doc, checkList(data.nonConformities, 'Sem identificação'), 'Sem identificação', x + 6, y + 86);
+  line(doc, 'Outro:', String(data.nonConformityOther || ''), x + 98, y + 86, { labelWidth: 22, valueWidth: w - 128, fontSize: 5.8 });
+
+  line(doc, 'Data ident.:', brDate(data.identifiedAt || label.openedAt), x + 6, y + 100, { labelWidth: 42, valueWidth: 60 });
+  doc.font('Helvetica-Bold').fontSize(6.2).fillColor('#333').text('Ação tomada:', x + 6, y + 114);
+  checkbox(doc, checkList(data.actionsTaken, 'Descarte'), 'Descarte', x + 6, y + 127);
+  checkbox(doc, checkList(data.actionsTaken, 'Devolução fornecedor'), 'Devolução fornecedor', x + 68, y + 127, 94);
+  checkbox(doc, checkList(data.actionsTaken, 'Avaliação responsável técnico'), 'Avaliação RT', x + 6, y + 139, 80);
+
+  line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + h - 15, { labelWidth: 43, valueWidth: w - 57 });
+  doc.restore();
+}
+
+function drawSampleLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+  const data = extra(label);
   doc.save();
   doc.roundedRect(x, y, w, h, 7).strokeColor('#1d3340').lineWidth(0.8).stroke();
   drawBrandMark(doc, x, y, w);
 
-  const title = isThawing(label) ? 'Produto em descongelamento/dessalgue:' : 'Produto e Marca/ Produção:';
-  const titleValue = [label.productName, label.brand].filter(Boolean).join(' - ');
+  title(doc, 'AMOSTRAS', x + 6, y + 7, w - 35);
+  line(doc, 'Produto:', firstLine(label.productName, '________________', 32), x + 6, y + 23, { labelWidth: 30, valueWidth: w - 45 });
+  line(doc, 'Data coleta:', brDate(label.openedAt), x + 6, y + 38, { labelWidth: 44, valueWidth: 58 });
+  line(doc, 'Hora coleta:', brTime(label.openedAt), x + 112, y + 38, { labelWidth: 44, valueWidth: w - 162 });
+  line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + 53, { labelWidth: 45, valueWidth: w - 59 });
+  line(doc, 'Restaurante:', textOrLine(data.restaurantName || 'Restaurante'), x + 6, y + 68, { labelWidth: 45, valueWidth: w - 59 });
+  line(doc, 'Data descarte:', brDate(data.discardAt || label.expiresAt), x + 6, y + 83, { labelWidth: 50, valueWidth: 64 });
 
-  doc.font('Helvetica-Bold').fontSize(6.6).fillColor('#333').text(title, x + 6, y + 7, { width: w - 35 });
+  doc.font('Helvetica-Bold').fontSize(6.1).fillColor('#333').text('Conservação:', x + 6, y + 99);
+  checkbox(doc, modeCheck(label.conservationMode, 'REFRIGERADO'), 'Refrigerado', x + 55, y + 99, 70);
+  checkbox(doc, modeCheck(label.conservationMode, 'CONGELADO'), 'Congelado', x + 125, y + 99, 70);
+  doc.restore();
+}
+
+function drawProductLikeLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+  const data = extra(label);
+  doc.save();
+  doc.roundedRect(x, y, w, h, 7).strokeColor('#1d3340').lineWidth(0.8).stroke();
+  drawBrandMark(doc, x, y, w);
+
+  let mainTitle = 'Produto e Marca/ Produção:';
+  if (label.type === 'PRODUTO_ABERTO') mainTitle = 'Produto industrializado aberto:';
+  if (label.type === 'PRODUCAO') mainTitle = 'Produto manipulado/preparado:';
+  if (label.type === 'REEMBALAGEM') mainTitle = 'Produto reembalado:';
+  if (label.type === 'ARMAZENAMENTO_CARNES') mainTitle = 'Produto/carne:';
+  if (isThawing(label)) mainTitle = 'Produto em descongelamento/dessalgue:';
+
+  const titleValue = [label.productName, label.brand].filter(Boolean).join(' - ');
+  doc.font('Helvetica-Bold').fontSize(6.6).fillColor('#333').text(mainTitle, x + 6, y + 7, { width: w - 35 });
   doc.font('Helvetica-Bold').fontSize(7.1).fillColor('#111').text(firstLine(titleValue), x + 6, y + 18, { width: w - 16, lineBreak: false });
   doc.moveTo(x + 6, y + 29).lineTo(x + w - 8, y + 29).strokeColor('#888').lineWidth(0.4).stroke();
 
-  drawFieldLine(doc, 'Fornecedor:', textOrLine(label.supplier), x + 6, y + 34, { labelWidth: 39, valueWidth: w - 53 });
+  if (isThawing(label)) {
+    line(doc, 'Data início:', brDate(label.openedAt), x + 6, y + 35, { labelWidth: 41, valueWidth: 52 });
+    line(doc, 'Hora início:', brTime(label.openedAt), x + 105, y + 35, { labelWidth: 42, valueWidth: w - 154 });
+    line(doc, 'Validade:', brDate(label.expiresAt ?? null), x + 6, y + 50, { labelWidth: 34, valueWidth: 70 });
+    doc.font('Helvetica-Bold').fontSize(6.1).fillColor('#333').text('Método:', x + 6, y + 65);
+    checkbox(doc, data.thawingMethod === 'Refrigerado (0°C a 5°C)' ? 'X' : ' ', 'Refrigerado (0°C a 5°C)', x + 40, y + 65, 90);
+    checkbox(doc, data.thawingMethod === 'Micro-ondas' ? 'X' : ' ', 'Micro-ondas', x + 6, y + 78, 70);
+    checkbox(doc, data.thawingMethod === 'Água corrente controlada' ? 'X' : ' ', 'Água corrente controlada', x + 78, y + 78, 105);
+    line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + h - 14, { labelWidth: 43, valueWidth: w - 56 });
+    doc.restore();
+    return;
+  }
+
+  if (label.type === 'ARMAZENAMENTO_CARNES') {
+    line(doc, 'Tipo:', String(data.meatType || ''), x + 6, y + 34, { labelWidth: 21, valueWidth: 62 });
+    line(doc, 'Fornecedor:', textOrLine(label.supplier), x + 6, y + 48, { labelWidth: 42, valueWidth: w - 56 });
+    line(doc, 'Lote:', textOrLine(label.batch), x + 6, y + 62, { labelWidth: 21, valueWidth: 55 });
+    line(doc, 'MAPA/SIF:', String(data.mapaSif || ''), x + 84, y + 62, { labelWidth: 39, valueWidth: w - 131 });
+    line(doc, 'Recebimento:', brDate(data.receivedAt || label.openedAt), x + 6, y + 76, { labelWidth: 48, valueWidth: 64 });
+    line(doc, 'Validade:', brDate(label.expiresAt ?? null), x + 6, y + 90, { labelWidth: 34, valueWidth: 64 });
+    doc.font('Helvetica-Bold').fontSize(6.1).fillColor('#333').text('Armazenamento:', x + 6, y + 104);
+    checkbox(doc, data.storageType === 'Resfriado' ? 'X' : ' ', 'Resfriado', x + 69, y + 104, 56);
+    checkbox(doc, data.storageType === 'Congelado' ? 'X' : ' ', 'Congelado', x + 124, y + 104, 70);
+    line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + h - 14, { labelWidth: 43, valueWidth: w - 56 });
+    doc.restore();
+    return;
+  }
+
+  if (label.type === 'REEMBALAGEM') {
+    line(doc, 'Lote:', textOrLine(label.batch), x + 6, y + 34, { labelWidth: 21, valueWidth: 60 });
+    line(doc, 'Data reemb.:', brDate(data.repackagedAt || label.openedAt), x + 6, y + 49, { labelWidth: 45, valueWidth: 62 });
+    line(doc, 'Val. original:', brDate(data.originalValidityAt), x + 6, y + 64, { labelWidth: 48, valueWidth: 64 });
+    line(doc, 'Nova validade:', brDate(data.newValidityAt || label.expiresAt), x + 6, y + 79, { labelWidth: 50, valueWidth: 64 });
+    line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + h - 14, { labelWidth: 43, valueWidth: w - 56 });
+    doc.restore();
+    return;
+  }
+
+  line(doc, 'Fornecedor:', textOrLine(label.supplier), x + 6, y + 34, { labelWidth: 39, valueWidth: w - 53 });
 
   doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Lote:', x + 6, y + 47);
   doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(textOrLine(label.batch), x + 25, y + 47, { width: 49, lineBreak: false });
@@ -133,7 +273,7 @@ function drawProductLikeLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: numb
   doc.font('Helvetica').fontSize(6.3).fillColor('#111').text('___/___/____', x + 115, y + 47, { width: 62, lineBreak: false });
   doc.moveTo(x + 115, y + 55).lineTo(x + w - 8, y + 55).strokeColor('#888').lineWidth(0.4).stroke();
 
-  const dateLabel = isThawing(label) ? 'Início desc./dessalgue:' : 'Manipulado/ aberto:';
+  const dateLabel = label.type === 'PRODUCAO' ? 'Produzido em:' : 'Manipulado/ aberto:';
   doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text(dateLabel, x + 6, y + 60);
   doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(`${brDate(label.openedAt)}   H: ${brTime(label.openedAt)}`, x + 72, y + 60, {
     width: w - 78,
@@ -141,16 +281,16 @@ function drawProductLikeLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: numb
   });
   doc.moveTo(x + 72, y + 68).lineTo(x + w - 8, y + 68).strokeColor('#888').lineWidth(0.4).stroke();
 
-  const validLabel = isThawing(label) ? 'Uso até:' : 'Valido até dia:';
-  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text(validLabel, x + 6, y + 73);
+  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Válido até:', x + 6, y + 73);
   doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(
-  `${brDate(label.expiresAt ?? null)} ${label.quantity ? ` • Qtd.: ${label.quantity}` : ''}`,
-  x + 57,
-  y + 73,
-  {
-    width: w - 64,
-    lineBreak: false,
-  });
+    `${brDate(label.expiresAt ?? null)} ${label.quantity ? ` • Qtd.: ${label.quantity}` : ''}`,
+    x + 57,
+    y + 73,
+    {
+      width: w - 64,
+      lineBreak: false,
+    },
+  );
   doc.moveTo(x + 57, y + 81).lineTo(x + w - 8, y + 81).strokeColor('#888').lineWidth(0.4).stroke();
 
   doc.font('Helvetica-Bold').fontSize(6.1).fillColor('#333').text('Modo de Conservação:', x + 64, y + 85, { width: 84, align: 'center' });
@@ -161,69 +301,42 @@ function drawProductLikeLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: numb
     { width: w - 16, lineBreak: false },
   );
 
-  doc.font('Helvetica-Bold').fontSize(6.1).fillColor('#333').text('Responsável:', x + 6, y + h - 14);
-  doc.font('Helvetica').fontSize(6.1).fillColor('#111').text(textOrLine(label.responsibleName), x + 45, y + h - 14, {
-    width: w - 52,
-    lineBreak: false,
-  });
-  doc.moveTo(x + 45, y + h - 6).lineTo(x + w - 8, y + h - 6).strokeColor('#888').lineWidth(0.4).stroke();
-
-  if (label.type === 'NAO_CONFORME') {
-    doc.rotate(-18, { origin: [x + w / 2, y + h / 2] });
-    doc.font('Helvetica-Bold').fontSize(18).fillColor('#c62828').opacity(0.16).text('NÃO CONFORME', x + 18, y + 42, {
-      width: w - 36,
-      align: 'center',
-    });
-    doc.opacity(1);
-  }
-
+  line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 6, y + h - 14, { labelWidth: 43, valueWidth: w - 56 });
   doc.restore();
 }
 
 function drawChemicalLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+  const data = extra(label);
   doc.save();
   doc.roundedRect(x, y, w, h, 7).strokeColor('#1d3340').lineWidth(0.8).stroke();
   drawBrandMark(doc, x, y, w);
 
   const productValue = [label.productName, label.brand].filter(Boolean).join(' - ');
-  doc.font('Helvetica-Bold').fontSize(7).fillColor('#333').text('Produto e Marca:', x + 7, y + 7, { width: w - 35 });
-  doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#111').text(firstLine(productValue), x + 7, y + 19, { width: w - 17, lineBreak: false });
-  doc.moveTo(x + 7, y + 31).lineTo(x + w - 8, y + 31).strokeColor('#888').lineWidth(0.4).stroke();
+  title(doc, 'PRODUTO QUÍMICO', x + 7, y + 7, w - 35);
+  line(doc, 'Produto:', firstLine(productValue, '________________', 33), x + 7, y + 22, { labelWidth: 30, valueWidth: w - 47 });
 
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#333').text('Lote:', x + 7, y + 38);
-  doc.font('Helvetica').fontSize(6.5).fillColor('#111').text(textOrLine(label.batch), x + 28, y + 38, { width: 65, lineBreak: false });
-  doc.moveTo(x + 28, y + 46).lineTo(x + 92, y + 46).strokeColor('#888').lineWidth(0.4).stroke();
+  doc.font('Helvetica-Bold').fontSize(6.4).fillColor('#333').text('Finalidade:', x + 7, y + 38);
+  checkbox(doc, checkList(data.chemicalPurposes, 'Higienização'), 'Higienização', x + 50, y + 38, 70);
+  checkbox(doc, checkList(data.chemicalPurposes, 'Desinfecção'), 'Desinfecção', x + 120, y + 38, 70);
+  checkbox(doc, checkList(data.chemicalPurposes, 'Limpeza pesada'), 'Limpeza pesada', x + 190, y + 38, 80);
 
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#333').text('Val. Prod.:', x + 104, y + 38);
-  doc.font('Helvetica').fontSize(6.5).fillColor('#111').text('___/___/____', x + 145, y + 38, { width: 75, lineBreak: false });
-  doc.moveTo(x + 145, y + 46).lineTo(x + w - 8, y + 46).strokeColor('#888').lineWidth(0.4).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Manipulado/ Limpo e Substituído:', x + 7, y + 52);
-  doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(`${brDate(label.openedAt)}`, x + 127, y + 52, { width: 78, lineBreak: false });
-  doc.moveTo(x + 127, y + 60).lineTo(x + w - 8, y + 60).strokeColor('#888').lineWidth(0.4).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Diluição:', x + 7, y + 66);
-  doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(textOrLine(label.observations), x + 41, y + 66, { width: 97, lineBreak: false });
-  doc.moveTo(x + 41, y + 74).lineTo(x + 136, y + 74).strokeColor('#888').lineWidth(0.4).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Horário:', x + 146, y + 66);
-  doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(brTime(label.openedAt), x + 177, y + 66, { width: 45, lineBreak: false });
-  doc.moveTo(x + 177, y + 74).lineTo(x + w - 8, y + 74).strokeColor('#888').lineWidth(0.4).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(6.3).fillColor('#333').text('Responsável:', x + 7, y + h - 13);
-  doc.font('Helvetica').fontSize(6.3).fillColor('#111').text(textOrLine(label.responsibleName), x + 51, y + h - 13, {
-    width: w - 60,
-    lineBreak: false,
+  line(doc, 'Diluição:', `${data.dilutionMl || '____'} mL para ${data.dilutionWaterL || '____'} L de água`, x + 7, y + 54, { labelWidth: 34, valueWidth: w - 50 });
+  line(doc, 'Data preparo:', brDate(data.chemicalPreparedAt || label.openedAt), x + 7, y + 70, { labelWidth: 50, valueWidth: 70 });
+  line(doc, 'Hora:', brTime(data.chemicalPreparedAt || label.openedAt), x + 135, y + 70, { labelWidth: 22, valueWidth: 45 });
+  line(doc, 'Validade:', brDate(data.chemicalValidityAt || label.expiresAt), x + 7, y + 86, { labelWidth: 34, valueWidth: 70 });
+  line(doc, 'Responsável:', textOrLine(label.responsibleName), x + 7, y + h - 13, {
+    labelWidth: 44,
+    valueWidth: w - 60,
+    fontSize: 6.3,
   });
-  doc.moveTo(x + 51, y + h - 5).lineTo(x + w - 8, y + h - 5).strokeColor('#888').lineWidth(0.4).stroke();
 
   doc.restore();
 }
 
-function drawEmptySlot(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number, chemical = false) {
+function drawEmptySlot(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number, type = 'PRODUTO_ABERTO') {
   const emptyLabel = {
     id: '',
-    type: chemical ? 'PRODUTO_QUIMICO' : 'PRODUTO_ABERTO',
+    type,
     productName: '',
     brand: '',
     supplier: '',
@@ -234,11 +347,11 @@ function drawEmptySlot(doc: PDFKit.PDFDocument, x: number, y: number, w: number,
     quantity: '',
     responsibleName: '',
     observations: '',
+    extraData: '',
     createdAt: new Date(),
   } as unknown as LabelCopy;
 
-  if (chemical) drawChemicalLabel(doc, emptyLabel, x, y, w, h);
-  else drawProductLikeLabel(doc, emptyLabel, x, y, w, h);
+  drawLabel(doc, emptyLabel, x, y, w, h);
 }
 
 type GridConfig = {
@@ -277,6 +390,21 @@ function gridFor(type: string): GridConfig {
   return { cols, rows, gapX, gapY, startX: marginX, startY, slotW, slotH };
 }
 
+function templateType(label: LabelCopy | { type: string }) {
+  if (label.type === 'PRODUTO_QUIMICO') return 'PRODUTO_QUIMICO';
+  if (label.type === 'DESCONGELAMENTO_DESSALGUE') return 'DESCONGELAMENTO_DESSALGUE';
+  if (label.type === 'NAO_CONFORME') return 'NAO_CONFORME';
+  if (label.type === 'AMOSTRAS') return 'AMOSTRAS';
+  return 'PRODUTO_ABERTO';
+}
+
+function drawLabel(doc: PDFKit.PDFDocument, label: LabelCopy, x: number, y: number, w: number, h: number) {
+  if (isChemical(label)) return drawChemicalLabel(doc, label, x, y, w, h);
+  if (isNonConform(label)) return drawNonConformLabel(doc, label, x, y, w, h);
+  if (isSample(label)) return drawSampleLabel(doc, label, x, y, w, h);
+  return drawProductLikeLabel(doc, label, x, y, w, h);
+}
+
 function drawSheet(doc: PDFKit.PDFDocument, type: string, labels: LabelCopy[], fillEmptySlots: boolean) {
   drawDocumentHeader(doc, type);
   const grid = gridFor(type);
@@ -290,13 +418,12 @@ function drawSheet(doc: PDFKit.PDFDocument, type: string, labels: LabelCopy[], f
     const label = labels[index];
 
     if (label) {
-      if (isChemical(label)) drawChemicalLabel(doc, label, x, y, grid.slotW, grid.slotH);
-      else drawProductLikeLabel(doc, label, x, y, grid.slotW, grid.slotH);
+      drawLabel(doc, label, x, y, grid.slotW, grid.slotH);
       continue;
     }
 
     if (fillEmptySlots) {
-      drawEmptySlot(doc, x, y, grid.slotW, grid.slotH, type === 'PRODUTO_QUIMICO');
+      drawEmptySlot(doc, x, y, grid.slotW, grid.slotH, type);
     }
   }
 }
@@ -304,7 +431,7 @@ function drawSheet(doc: PDFKit.PDFDocument, type: string, labels: LabelCopy[], f
 function groupByTemplate(labels: LabelCopy[]) {
   const groups: Record<string, LabelCopy[]> = {};
   labels.forEach((label) => {
-    const template = isChemical(label) ? 'PRODUTO_QUIMICO' : isThawing(label) ? 'DESCONGELAMENTO_DESSALGUE' : 'PRODUTO_ABERTO';
+    const template = templateType(label);
     groups[template] ||= [];
     groups[template].push(label);
   });
