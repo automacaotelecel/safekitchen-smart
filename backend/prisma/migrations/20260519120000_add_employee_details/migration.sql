@@ -1,0 +1,3 @@
+ALTER TABLE "Employee" ADD COLUMN "role" TEXT;
+ALTER TABLE "Employee" ADD COLUMN "phone" TEXT;
+ALTER TABLE "Employee" ADD COLUMN "email" TEXT;
