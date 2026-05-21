@@ -7,54 +7,60 @@ const http_1 = require("../../lib/http");
 const auth_middleware_1 = require("../auth/auth.middleware");
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authMiddleware);
-const createProductSchema = zod_1.z.object({
-    name: zod_1.z.string().min(2),
-    category: zod_1.z.string().min(2),
-    imageUrl: zod_1.z.string().optional().default(''),
-    defaultMode: zod_1.z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']),
-    keywords: zod_1.z.string().optional().default(''),
-    validityValue: zod_1.z.number().int().positive(),
-    validityUnit: zod_1.z.enum(['hours', 'days']).default('days'),
-    ruleDescription: zod_1.z.string().optional().default('Regra personalizada do restaurante')
+const productSchema = zod_1.z.object({
+    name: zod_1.z.string().min(2, 'Informe o nome do produto.'),
+    category: zod_1.z.string().min(2, 'Informe a categoria.'),
+    imageUrl: zod_1.z.string().optional().nullable(),
+    defaultMode: zod_1.z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']).default('REFRIGERADO'),
+    keywords: zod_1.z.string().optional().nullable(),
+    isGlobal: zod_1.z.boolean().optional(),
+    active: zod_1.z.boolean().optional(),
 });
-const updateProductSchema = zod_1.z.object({
-    name: zod_1.z.string().min(2).optional(),
-    category: zod_1.z.string().min(2).optional(),
-    imageUrl: zod_1.z.string().nullable().optional(),
-    defaultMode: zod_1.z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']).optional(),
-    keywords: zod_1.z.string().optional()
-});
-function canUseProductWhere(productId, restaurantId) {
-    return {
-        id: productId,
-        OR: [{ isGlobal: true }, { restaurantId }]
-    };
+const updateProductSchema = productSchema.partial();
+function clean(value) {
+    if (typeof value !== 'string')
+        return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
 }
 router.get('/', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const includeInactive = String(req.query.includeInactive || '') === '1';
     const search = String(req.query.search || '').trim();
-    const where = {
-        OR: [{ isGlobal: true }, { restaurantId: req.user.restaurantId }],
-        ...(search
-            ? {
-                AND: [
-                    {
+    const products = await prisma_1.prisma.product.findMany({
+        where: {
+            AND: [
+                {
+                    OR: [
+                        { restaurantId: req.user.restaurantId },
+                        { isGlobal: true },
+                    ],
+                },
+                includeInactive ? {} : { active: true },
+                search
+                    ? {
                         OR: [
                             { name: { contains: search } },
                             { category: { contains: search } },
-                            { keywords: { contains: search } }
-                        ]
+                            { keywords: { contains: search } },
+                        ],
                     }
-                ]
-            }
-            : {})
-    };
-    const products = await prisma_1.prisma.product.findMany({
-        where,
-        include: { validityRules: true },
-        orderBy: [{ isGlobal: 'desc' }, { name: 'asc' }],
-        take: 200
+                    : {},
+            ],
+        },
+        include: {
+            validityRules: true,
+            _count: {
+                select: {
+                    labels: true,
+                },
+            },
+        },
+        orderBy: [
+            { active: 'desc' },
+            { name: 'asc' },
+        ],
     });
     return (0, http_1.ok)(res, products);
 });
@@ -62,15 +68,27 @@ router.get('/:id', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
     const product = await prisma_1.prisma.product.findFirst({
-        where: canUseProductWhere(req.params.id, req.user.restaurantId),
+        where: {
+            id: req.params.id,
+            OR: [
+                { restaurantId: req.user.restaurantId },
+                { isGlobal: true },
+            ],
+        },
         include: {
             validityRules: true,
             labels: {
-                where: { restaurantId: req.user.restaurantId },
-                orderBy: { createdAt: 'desc' },
-                take: 100
-            }
-        }
+                orderBy: {
+                    createdAt: 'desc',
+                },
+                take: 30,
+            },
+            _count: {
+                select: {
+                    labels: true,
+                },
+            },
+        },
     });
     if (!product)
         return (0, http_1.fail)(res, 'Produto não encontrado.', 404);
@@ -79,30 +97,29 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const parsed = createProductSchema.safeParse(req.body);
-    if (!parsed.success)
+    const parsed = productSchema.safeParse(req.body);
+    if (!parsed.success) {
         return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
+    }
     const product = await prisma_1.prisma.product.create({
         data: {
             restaurantId: req.user.restaurantId,
-            name: parsed.data.name.toUpperCase(),
-            category: parsed.data.category,
-            imageUrl: parsed.data.imageUrl || null,
+            name: parsed.data.name.trim(),
+            category: parsed.data.category.trim(),
+            imageUrl: clean(parsed.data.imageUrl),
             defaultMode: parsed.data.defaultMode,
-            keywords: parsed.data.keywords,
+            keywords: parsed.data.keywords?.trim() || '',
             isGlobal: false,
-            validityRules: {
-                create: {
-                    category: parsed.data.category,
-                    description: parsed.data.ruleDescription,
-                    conservationMode: parsed.data.defaultMode,
-                    validityValue: parsed.data.validityValue,
-                    validityUnit: parsed.data.validityUnit,
-                    source: 'Cadastro personalizado do restaurante'
-                }
-            }
+            active: parsed.data.active ?? true,
         },
-        include: { validityRules: true }
+        include: {
+            validityRules: true,
+            _count: {
+                select: {
+                    labels: true,
+                },
+            },
+        },
     });
     return (0, http_1.ok)(res, product, 201);
 });
@@ -110,26 +127,93 @@ router.patch('/:id', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
     const parsed = updateProductSchema.safeParse(req.body);
-    if (!parsed.success)
+    if (!parsed.success) {
         return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
-    const existing = await prisma_1.prisma.product.findFirst({
-        where: canUseProductWhere(req.params.id, req.user.restaurantId)
-    });
-    if (!existing)
-        return (0, http_1.fail)(res, 'Produto não encontrado.', 404);
-    // Para o MVP, permitimos ajustar foto e dados dos produtos acessíveis.
-    // Em ambiente SaaS multiempresa, recomenda-se duplicar produto global por restaurante antes de editar.
-    const product = await prisma_1.prisma.product.update({
-        where: { id: existing.id },
-        data: {
-            ...(parsed.data.name !== undefined ? { name: parsed.data.name.toUpperCase() } : {}),
-            ...(parsed.data.category !== undefined ? { category: parsed.data.category } : {}),
-            ...(parsed.data.imageUrl !== undefined ? { imageUrl: parsed.data.imageUrl || null } : {}),
-            ...(parsed.data.defaultMode !== undefined ? { defaultMode: parsed.data.defaultMode } : {}),
-            ...(parsed.data.keywords !== undefined ? { keywords: parsed.data.keywords } : {})
+    }
+    const product = await prisma_1.prisma.product.findFirst({
+        where: {
+            id: req.params.id,
+            restaurantId: req.user.restaurantId,
         },
-        include: { validityRules: true }
     });
-    return (0, http_1.ok)(res, product);
+    if (!product) {
+        return (0, http_1.fail)(res, 'Produto não encontrado ou não editável.', 404);
+    }
+    const updated = await prisma_1.prisma.product.update({
+        where: {
+            id: product.id,
+        },
+        data: {
+            ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
+            ...(parsed.data.category !== undefined ? { category: parsed.data.category.trim() } : {}),
+            ...(parsed.data.imageUrl !== undefined ? { imageUrl: clean(parsed.data.imageUrl) } : {}),
+            ...(parsed.data.defaultMode !== undefined ? { defaultMode: parsed.data.defaultMode } : {}),
+            ...(parsed.data.keywords !== undefined ? { keywords: parsed.data.keywords?.trim() || '' } : {}),
+            ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
+        },
+        include: {
+            validityRules: true,
+            _count: {
+                select: {
+                    labels: true,
+                },
+            },
+        },
+    });
+    return (0, http_1.ok)(res, updated);
+});
+router.delete('/:id', async (req, res) => {
+    if (!req.user)
+        return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const product = await prisma_1.prisma.product.findFirst({
+        where: {
+            id: req.params.id,
+            restaurantId: req.user.restaurantId,
+        },
+        include: {
+            _count: {
+                select: {
+                    labels: true,
+                },
+            },
+        },
+    });
+    if (!product) {
+        return (0, http_1.fail)(res, 'Produto não encontrado ou não editável.', 404);
+    }
+    if (product._count.labels > 0) {
+        const updated = await prisma_1.prisma.product.update({
+            where: {
+                id: product.id,
+            },
+            data: {
+                active: false,
+            },
+            include: {
+                validityRules: true,
+                _count: {
+                    select: {
+                        labels: true,
+                    },
+                },
+            },
+        });
+        return (0, http_1.ok)(res, {
+            removed: false,
+            inactivated: true,
+            message: 'Produto inativado para preservar o histórico de etiquetas.',
+            product: updated,
+        });
+    }
+    await prisma_1.prisma.product.delete({
+        where: {
+            id: product.id,
+        },
+    });
+    return (0, http_1.ok)(res, {
+        removed: true,
+        inactivated: false,
+        message: 'Produto removido definitivamente.',
+    });
 });
 exports.default = router;

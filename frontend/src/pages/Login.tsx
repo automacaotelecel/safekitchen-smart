@@ -75,7 +75,7 @@ export function Login() {
 
               <p className="mt-6 max-w-md text-lg font-semibold leading-relaxed text-white/85">
                 Etiquetas automáticas, validade calculada e histórico para
-                auditoria sanitária em tablet e celular.
+                auditoria em tablet e celular.
               </p>
 
               <div className="mt-8 grid max-w-md gap-3 sm:grid-cols-2">

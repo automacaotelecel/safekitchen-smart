@@ -1,175 +1,300 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const date_fns_1 = require("date-fns");
 const zod_1 = require("zod");
-const auth_middleware_1 = require("../auth/auth.middleware");
+const date_fns_1 = require("date-fns");
 const prisma_1 = require("../../lib/prisma");
 const http_1 = require("../../lib/http");
-const pdf_service_1 = require("./pdf.service");
+const auth_middleware_1 = require("../auth/auth.middleware");
 const router = (0, express_1.Router)();
-router.use(auth_middleware_1.authMiddleware);
-const createLabelSchema = zod_1.z.object({
-    type: zod_1.z.enum(['PRODUTO_ABERTO', 'PRODUCAO', 'DESCONGELAMENTO_DESSALGUE', 'ARMAZENAMENTO_CARNES', 'REEMBALAGEM', 'AMOSTRAS', 'NAO_CONFORME', 'PRODUTO_QUIMICO']),
+const labelSchema = zod_1.z.object({
+    type: zod_1.z.string().min(2),
     productId: zod_1.z.string().optional().nullable(),
-    productName: zod_1.z.string().min(2),
+    employeeId: zod_1.z.string().optional().nullable(),
+    productName: zod_1.z.string().min(2, 'Informe o produto.'),
     brand: zod_1.z.string().optional().nullable(),
     supplier: zod_1.z.string().optional().nullable(),
     batch: zod_1.z.string().optional().nullable(),
-    conservationMode: zod_1.z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']),
-    openedAt: zod_1.z.string().min(10),
-    employeeId: zod_1.z.string().optional().nullable(),
-    responsibleName: zod_1.z.string().min(2),
+    conservationMode: zod_1.z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']).default('REFRIGERADO'),
+    openedAt: zod_1.z.string().min(1),
+    responsibleName: zod_1.z.string().min(2, 'Informe o responsável.'),
     quantity: zod_1.z.string().optional().nullable(),
     observations: zod_1.z.string().optional().nullable(),
-    manualValidityValue: zod_1.z.number().int().positive().optional().nullable(),
-    manualValidityUnit: zod_1.z.enum(['hours', 'days']).optional().nullable(),
-    extraData: zod_1.z.record(zod_1.z.any()).optional().nullable()
+    manualValidityValue: zod_1.z.number().optional().nullable(),
+    manualValidityUnit: zod_1.z.enum(['days', 'hours']).optional().nullable(),
+    extraData: zod_1.z.record(zod_1.z.any()).optional().nullable(),
 });
-const batchPdfSchema = zod_1.z.object({
-    items: zod_1.z.array(zod_1.z.object({
-        id: zod_1.z.string().min(1),
-        copies: zod_1.z.number().int().min(1).max(30).default(1)
-    })).min(1).max(120)
-});
+function parseDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return new Date();
+    }
+    return date;
+}
+function normalizeText(value) {
+    if (typeof value !== 'string')
+        return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+}
 async function calculateExpiration(input) {
-    const openedAt = new Date(input.openedAt);
     if (input.type === 'NAO_CONFORME')
         return null;
-    if (input.type === 'AMOSTRAS')
-        return (0, date_fns_1.addHours)(openedAt, 72);
-    if (input.manualValidityValue && input.manualValidityUnit) {
-        return input.manualValidityUnit === 'hours'
-            ? (0, date_fns_1.addHours)(openedAt, input.manualValidityValue)
-            : (0, date_fns_1.addDays)(openedAt, input.manualValidityValue);
+    if (input.type === 'AMOSTRAS') {
+        return (0, date_fns_1.addHours)(input.openedAt, 72);
     }
-    const productRule = input.productId
-        ? await prisma_1.prisma.validityRule.findFirst({
-            where: { productId: input.productId, conservationMode: input.conservationMode },
-            orderBy: { createdAt: 'asc' }
-        })
-        : null;
-    const fallbackRule = productRule || await prisma_1.prisma.validityRule.findFirst({
-        where: {
-            conservationMode: input.conservationMode,
-            OR: [
-                { description: { contains: input.productName } },
-                { category: { contains: input.productName } }
-            ]
-        },
-        orderBy: { createdAt: 'asc' }
-    });
-    if (!fallbackRule)
-        return null;
-    return fallbackRule.validityUnit === 'hours'
-        ? (0, date_fns_1.addHours)(openedAt, fallbackRule.validityValue)
-        : (0, date_fns_1.addDays)(openedAt, fallbackRule.validityValue);
+    if (input.manualValidityValue && input.manualValidityValue > 0) {
+        return input.manualValidityUnit === 'hours'
+            ? (0, date_fns_1.addHours)(input.openedAt, input.manualValidityValue)
+            : (0, date_fns_1.addDays)(input.openedAt, input.manualValidityValue);
+    }
+    if (input.productId) {
+        const rule = await prisma_1.prisma.validityRule.findFirst({
+            where: {
+                productId: input.productId,
+                conservationMode: input.conservationMode,
+            },
+        });
+        if (rule) {
+            return rule.validityUnit === 'hours'
+                ? (0, date_fns_1.addHours)(input.openedAt, rule.validityValue)
+                : (0, date_fns_1.addDays)(input.openedAt, rule.validityValue);
+        }
+    }
+    return (0, date_fns_1.addDays)(input.openedAt, 3);
 }
-router.get('/', async (req, res) => {
-    if (!req.user)
-        return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const labels = await prisma_1.prisma.label.findMany({
-        where: { restaurantId: req.user.restaurantId },
-        include: { product: true, employee: true },
-        orderBy: { createdAt: 'desc' },
-        take: 100
-    });
-    return (0, http_1.ok)(res, labels);
+router.use((req, res, next) => {
+    const token = req.query.token;
+    if (token && typeof token === 'string') {
+        req.headers.authorization = `Bearer ${token}`;
+    }
+    next();
 });
+router.use(auth_middleware_1.authMiddleware);
 router.get('/dashboard', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const today = new Date();
     const labels = await prisma_1.prisma.label.findMany({
-        where: { restaurantId: req.user.restaurantId },
-        orderBy: { createdAt: 'desc' }
+        where: {
+            restaurantId: req.user.restaurantId,
+            status: {
+                not: 'CANCELADA',
+            },
+        },
+        orderBy: {
+            createdAt: 'desc',
+        },
     });
+    const now = new Date();
     const total = labels.length;
-    const expired = labels.filter((l) => l.expiresAt && l.expiresAt < today).length;
-    const noExpiration = labels.filter((l) => !l.expiresAt).length;
-    const recent = labels.slice(0, 5);
-    return (0, http_1.ok)(res, { total, expired, active: total - expired, noExpiration, recent });
+    const expired = labels.filter((label) => label.expiresAt && label.expiresAt.getTime() < now.getTime()).length;
+    const active = labels.filter((label) => !label.expiresAt || label.expiresAt.getTime() >= now.getTime()).length;
+    const noExpiration = labels.filter((label) => !label.expiresAt).length;
+    return (0, http_1.ok)(res, {
+        total,
+        active,
+        expired,
+        noExpiration,
+        recent: labels.slice(0, 5),
+    });
+});
+router.get('/', async (req, res) => {
+    if (!req.user)
+        return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const includeCanceled = String(req.query.includeCanceled || '') === '1';
+    const limit = Number(req.query.limit || 100);
+    const labels = await prisma_1.prisma.label.findMany({
+        where: {
+            restaurantId: req.user.restaurantId,
+            ...(includeCanceled ? {} : { status: { not: 'CANCELADA' } }),
+        },
+        orderBy: {
+            createdAt: 'desc',
+        },
+        take: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 300) : 100,
+    });
+    return (0, http_1.ok)(res, labels);
 });
 router.post('/', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const parsed = createLabelSchema.safeParse(req.body);
-    if (!parsed.success)
+    const parsed = labelSchema.safeParse(req.body);
+    if (!parsed.success) {
         return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
-    const expiresAt = await calculateExpiration(parsed.data);
-    const restaurant = await prisma_1.prisma.restaurant.findUnique({
-        where: { id: req.user.restaurantId },
-        select: { name: true }
+    }
+    const openedAt = parseDate(parsed.data.openedAt);
+    const expiresAt = await calculateExpiration({
+        restaurantId: req.user.restaurantId,
+        productId: parsed.data.productId,
+        type: parsed.data.type,
+        conservationMode: parsed.data.conservationMode,
+        openedAt,
+        manualValidityValue: parsed.data.manualValidityValue,
+        manualValidityUnit: parsed.data.manualValidityUnit,
     });
-    const normalizedExtraData = {
-        ...(parsed.data.extraData || {}),
-        ...(parsed.data.type === 'AMOSTRAS'
-            ? {
-                restaurantName: parsed.data.extraData?.restaurantName ||
-                    restaurant?.name ||
-                    'Restaurante',
-                discardAt: expiresAt ? expiresAt.toISOString() : null
-            }
-            : {})
-    };
+    const normalizedExtraData = parsed.data.extraData || {};
     const label = await prisma_1.prisma.label.create({
         data: {
             restaurantId: req.user.restaurantId,
             productId: parsed.data.productId || null,
             employeeId: parsed.data.employeeId || null,
             type: parsed.data.type,
-            productName: parsed.data.productName.toUpperCase(),
-            brand: parsed.data.brand || null,
-            supplier: parsed.data.supplier || null,
-            batch: parsed.data.batch || null,
+            productName: parsed.data.productName.trim(),
+            brand: normalizeText(parsed.data.brand),
+            supplier: normalizeText(parsed.data.supplier),
+            batch: normalizeText(parsed.data.batch),
             conservationMode: parsed.data.conservationMode,
-            openedAt: new Date(parsed.data.openedAt),
+            openedAt,
             expiresAt,
-            quantity: parsed.data.quantity || null,
-            responsibleName: parsed.data.responsibleName,
-            observations: parsed.data.observations || null,
-            extraData: Object.keys(normalizedExtraData).length ? JSON.stringify(normalizedExtraData) : null
-        }
+            quantity: normalizeText(parsed.data.quantity),
+            responsibleName: parsed.data.responsibleName.trim(),
+            observations: normalizeText(parsed.data.observations),
+            extraData: Object.keys(normalizedExtraData).length
+                ? JSON.stringify(normalizedExtraData)
+                : null,
+            status: 'ATIVA',
+        },
     });
     return (0, http_1.ok)(res, label, 201);
-});
-router.post('/batch-pdf', async (req, res) => {
-    if (!req.user)
-        return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const parsed = batchPdfSchema.safeParse(req.body);
-    if (!parsed.success)
-        return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
-    const ids = parsed.data.items.map((item) => item.id);
-    const labels = await prisma_1.prisma.label.findMany({
-        where: {
-            restaurantId: req.user.restaurantId,
-            id: { in: ids }
-        }
-    });
-    const labelById = new Map(labels.map((label) => [label.id, label]));
-    const expanded = parsed.data.items.flatMap((item) => {
-        const label = labelById.get(item.id);
-        if (!label)
-            return [];
-        return Array.from({ length: item.copies }, () => label);
-    });
-    if (expanded.length === 0)
-        return (0, http_1.fail)(res, 'Nenhuma etiqueta encontrada para impressão.', 404);
-    const pdf = await (0, pdf_service_1.buildLabelsSheetPdf)(expanded);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="etiquetas-em-lote.pdf"');
-    return res.send(pdf);
 });
 router.get('/:id/pdf', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
-    const label = await prisma_1.prisma.label.findFirst({ where: { id: req.params.id, restaurantId: req.user.restaurantId } });
+    const { generateLabelPdf } = await Promise.resolve().then(() => __importStar(require('./pdf.service')));
+    const label = await prisma_1.prisma.label.findFirst({
+        where: {
+            id: req.params.id,
+            restaurantId: req.user.restaurantId,
+        },
+    });
     if (!label)
         return (0, http_1.fail)(res, 'Etiqueta não encontrada.', 404);
-    const copies = Number(req.query.copies || 1);
-    const pdf = await (0, pdf_service_1.buildLabelPdf)(label, Number.isFinite(copies) ? copies : 1);
+    const buffer = await generateLabelPdf(label);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="etiqueta-${label.id}.pdf"`);
-    return res.send(pdf);
+    return res.send(buffer);
+});
+router.post('/batch-pdf', async (req, res) => {
+    if (!req.user)
+        return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const schema = zod_1.z.object({
+        items: zod_1.z.array(zod_1.z.object({
+            id: zod_1.z.string(),
+            copies: zod_1.z.number().min(1).max(30).default(1),
+        })).min(1),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+        return (0, http_1.fail)(res, 'Dados inválidos.', 422, parsed.error.flatten());
+    }
+    const { generateBatchLabelsPdf } = await Promise.resolve().then(() => __importStar(require('./pdf.service')));
+    const ids = parsed.data.items.map((item) => item.id);
+    const labels = await prisma_1.prisma.label.findMany({
+        where: {
+            id: {
+                in: ids,
+            },
+            restaurantId: req.user.restaurantId,
+        },
+    });
+    const expandedLabels = parsed.data.items.flatMap((item) => {
+        const label = labels.find((current) => current.id === item.id);
+        if (!label)
+            return [];
+        return Array.from({ length: item.copies }, () => label);
+    });
+    if (!expandedLabels.length) {
+        return (0, http_1.fail)(res, 'Nenhuma etiqueta encontrada.', 404);
+    }
+    const buffer = await generateBatchLabelsPdf(expandedLabels);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="etiquetas-lote.pdf"`);
+    return res.send(buffer);
+});
+router.patch('/:id/cancel', async (req, res) => {
+    if (!req.user)
+        return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const label = await prisma_1.prisma.label.findFirst({
+        where: {
+            id: req.params.id,
+            restaurantId: req.user.restaurantId,
+        },
+    });
+    if (!label)
+        return (0, http_1.fail)(res, 'Etiqueta não encontrada.', 404);
+    const updated = await prisma_1.prisma.label.update({
+        where: {
+            id: label.id,
+        },
+        data: {
+            status: 'CANCELADA',
+            observations: label.observations
+                ? `${label.observations}\n\nEtiqueta cancelada em ${new Date().toLocaleString('pt-BR')}.`
+                : `Etiqueta cancelada em ${new Date().toLocaleString('pt-BR')}.`,
+        },
+    });
+    return (0, http_1.ok)(res, updated);
+});
+router.delete('/:id', async (req, res) => {
+    if (!req.user)
+        return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const label = await prisma_1.prisma.label.findFirst({
+        where: {
+            id: req.params.id,
+            restaurantId: req.user.restaurantId,
+        },
+    });
+    if (!label)
+        return (0, http_1.fail)(res, 'Etiqueta não encontrada.', 404);
+    const updated = await prisma_1.prisma.label.update({
+        where: {
+            id: label.id,
+        },
+        data: {
+            status: 'CANCELADA',
+            observations: label.observations
+                ? `${label.observations}\n\nEtiqueta cancelada/removida em ${new Date().toLocaleString('pt-BR')}.`
+                : `Etiqueta cancelada/removida em ${new Date().toLocaleString('pt-BR')}.`,
+        },
+    });
+    return (0, http_1.ok)(res, {
+        deleted: false,
+        canceled: true,
+        message: 'Etiqueta cancelada para preservar rastreabilidade.',
+        label: updated,
+    });
 });
 exports.default = router;

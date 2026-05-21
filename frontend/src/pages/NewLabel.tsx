@@ -163,15 +163,23 @@ export function NewLabel() {
 
   const [showTypeOptions, setShowTypeOptions] = useState(false);
   const [showProductOptions, setShowProductOptions] = useState(false);
+  const [showAdditionalFields, setShowAdditionalFields] = useState(false);
+
+  const isSampleLabel = form.type === 'AMOSTRAS';
 
   useEffect(() => {
-    api<Product[]>('/api/products')
+    api<Product[]>('/api/products?includeInactive=0')
       .then((data) => {
-        setProducts(data);
+        const activeProducts = Array.isArray(data)
+          ? data.filter((product) => product.active !== false)
+          : [];
+
+        setProducts(activeProducts);
 
         const productId = searchParams.get('productId');
+
         const product = productId
-          ? data.find((item) => item.id === productId)
+          ? activeProducts.find((item) => item.id === productId)
           : null;
 
         if (product) {
@@ -193,11 +201,13 @@ export function NewLabel() {
   const productOptions = useMemo(() => {
     const q = search.trim().toLowerCase();
 
+    const activeProducts = products.filter((product) => product.active !== false);
+
     if (!q) {
-      return products.slice(0, 10);
+      return activeProducts.slice(0, 10);
     }
 
-    return products
+    return activeProducts
       .filter((product) =>
         `${product.name} ${product.category} ${product.keywords}`
           .toLowerCase()
@@ -302,7 +312,14 @@ export function NewLabel() {
     setForm((old) => ({
       ...old,
       type,
+      productId: type === 'AMOSTRAS' ? '' : old.productId,
+      productName: type === 'AMOSTRAS' ? '' : old.productName,
     }));
+
+    if (type === 'AMOSTRAS') {
+      setSearch('');
+      setShowProductOptions(false);
+    }
 
     setShowTypeOptions(false);
   }
@@ -513,117 +530,119 @@ export function NewLabel() {
               toggleExtraArray={toggleExtraArray}
             />
 
-            <div className="md:col-span-2">
-              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                Buscar produto
-              </label>
+            {!isSampleLabel && (
+              <div className="md:col-span-2">
+                <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                  Buscar produto
+                </label>
 
-              <div
-                className="relative mt-2"
-                onBlur={() => {
-                  window.setTimeout(() => setShowProductOptions(false), 160);
-                }}
-              >
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition focus-within:border-safe-green focus-within:bg-white dark:border-white/10 dark:bg-[#151515] dark:focus-within:bg-[#151515]">
-                  <Search size={18} className="text-slate-400" />
+                <div
+                  className="relative mt-2"
+                  onBlur={() => {
+                    window.setTimeout(() => setShowProductOptions(false), 160);
+                  }}
+                >
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition focus-within:border-safe-green focus-within:bg-white dark:border-white/10 dark:bg-[#151515] dark:focus-within:bg-[#151515]">
+                    <Search size={18} className="text-slate-400" />
 
-                  <input
-                    value={search}
-                    onFocus={() => setShowProductOptions(true)}
-                    onChange={(event) => {
-                      setSearch(event.target.value);
-                      setShowProductOptions(true);
+                    <input
+                      value={search}
+                      onFocus={() => setShowProductOptions(true)}
+                      onChange={(event) => {
+                        setSearch(event.target.value);
+                        setShowProductOptions(true);
 
-                      setForm((old) => ({
-                        ...old,
-                        productName: event.target.value,
-                        productId: '',
-                      }));
-                    }}
-                    placeholder="Clique ou digite para buscar um produto..."
-                    className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
-                  />
+                        setForm((old) => ({
+                          ...old,
+                          productName: event.target.value,
+                          productId: '',
+                        }));
+                      }}
+                      placeholder="Clique ou digite para buscar um produto..."
+                      className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
+                    />
 
-                  {search && (
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={clearProduct}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:bg-white/10"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      onClick={clearProduct}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:bg-white/10"
+                      onClick={() => setShowProductOptions((old) => !old)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-safe-soft text-safe-green dark:bg-white/10"
                     >
-                      <X size={15} />
+                      {showProductOptions ? (
+                        <ChevronUp size={16} />
+                      ) : (
+                        <ChevronDown size={16} />
+                      )}
                     </button>
-                  )}
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowProductOptions((old) => !old)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-safe-soft text-safe-green dark:bg-white/10"
-                  >
-                    {showProductOptions ? (
-                      <ChevronUp size={16} />
-                    ) : (
-                      <ChevronDown size={16} />
-                    )}
-                  </button>
+                  {showProductOptions && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#202020]">
+                      <div className="max-h-[320px] overflow-y-auto p-2">
+                        {productOptions.length > 0 ? (
+                          productOptions.map((product) => (
+                            <button
+                              type="button"
+                              key={product.id}
+                              onClick={() => pickProduct(product)}
+                              className={`flex w-full items-start justify-between gap-3 rounded-2xl p-3 text-left transition ${
+                                form.productId === product.id
+                                  ? 'bg-safe-soft text-safe-dark dark:bg-emerald-950/40 dark:text-white'
+                                  : 'hover:bg-slate-50 dark:hover:bg-white/5'
+                              }`}
+                            >
+                              <div>
+                                <p className="text-sm font-black text-slate-900 dark:text-white">
+                                  {product.name}
+                                </p>
+
+                                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
+                                  {product.category} • {product.defaultMode}
+                                </p>
+                              </div>
+
+                              {form.productId === product.id && (
+                                <span className="rounded-full bg-safe-green px-3 py-1 text-[10px] font-black uppercase text-white">
+                                  Selecionado
+                                </span>
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                            Nenhum produto encontrado. Você pode continuar preenchendo manualmente.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {showProductOptions && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#202020]">
-                    <div className="max-h-[320px] overflow-y-auto p-2">
-                      {productOptions.length > 0 ? (
-                        productOptions.map((product) => (
-                          <button
-                            type="button"
-                            key={product.id}
-                            onClick={() => pickProduct(product)}
-                            className={`flex w-full items-start justify-between gap-3 rounded-2xl p-3 text-left transition ${
-                              form.productId === product.id
-                                ? 'bg-safe-soft text-safe-dark dark:bg-emerald-950/40 dark:text-white'
-                                : 'hover:bg-slate-50 dark:hover:bg-white/5'
-                            }`}
-                          >
-                            <div>
-                              <p className="text-sm font-black text-slate-900 dark:text-white">
-                                {product.name}
-                              </p>
+                {form.productId && (
+                  <div className="mt-3 rounded-2xl border border-safe-green bg-safe-soft p-3 dark:border-emerald-500/40 dark:bg-emerald-950/30">
+                    <p className="text-xs font-black uppercase tracking-wider text-safe-green">
+                      Produto selecionado
+                    </p>
 
-                              <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
-                                {product.category} • {product.defaultMode}
-                              </p>
-                            </div>
-
-                            {form.productId === product.id && (
-                              <span className="rounded-full bg-safe-green px-3 py-1 text-[10px] font-black uppercase text-white">
-                                Selecionado
-                              </span>
-                            )}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-                          Nenhum produto encontrado. Você pode continuar preenchendo manualmente.
-                        </div>
-                      )}
-                    </div>
+                    <p className="mt-1 text-sm font-black text-safe-dark dark:text-white">
+                      {form.productName}
+                    </p>
                   </div>
                 )}
               </div>
-
-              {form.productId && (
-                <div className="mt-3 rounded-2xl border border-safe-green bg-safe-soft p-3 dark:border-emerald-500/40 dark:bg-emerald-950/30">
-                  <p className="text-xs font-black uppercase tracking-wider text-safe-green">
-                    Produto selecionado
-                  </p>
-
-                  <p className="mt-1 text-sm font-black text-safe-dark dark:text-white">
-                    {form.productName}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
 
             <Input
-              label="Produto/produção"
+              label={isSampleLabel ? 'Produto da amostra' : 'Produto/produção'}
               value={form.productName}
               onChange={(value) =>
                 setForm((old) => ({
@@ -632,6 +651,7 @@ export function NewLabel() {
                 }))
               }
               required
+              placeholder={isSampleLabel ? 'Ex.: salada, arroz, feijão, molho...' : undefined}
             />
 
             <Input
@@ -710,100 +730,130 @@ export function NewLabel() {
               </div>
             </div>
 
-            <div>
-              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                Responsável
-              </label>
-
-              <select
-                value={form.employeeId}
-                onChange={(event) => pickEmployee(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+            <div className="md:col-span-2 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#151515]">
+              <button
+                type="button"
+                onClick={() => setShowAdditionalFields((old) => !old)}
+                className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50 dark:hover:bg-white/5"
               >
-                <option value="">Selecionar funcionário</option>
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-safe-dark dark:text-white">
+                    Detalhes adicionais
+                  </p>
 
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
+                    Responsável, quantidade, validade manual e observações.
+                  </p>
+                </div>
 
-            <Input
-              label="Nome do responsável"
-              value={form.responsibleName}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  responsibleName: value,
-                }))
-              }
-              required
-            />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green dark:bg-white/10">
+                  {showAdditionalFields ? (
+                    <ChevronUp size={18} />
+                  ) : (
+                    <ChevronDown size={18} />
+                  )}
+                </div>
+              </button>
 
-            <Input
-              label="Quantidade"
-              value={form.quantity}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  quantity: value,
-                }))
-              }
-              placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
-            />
+              {showAdditionalFields && (
+                <div className="grid gap-4 border-t border-slate-100 p-4 dark:border-white/10 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                      Responsável
+                    </label>
 
-            <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">
-              <Input
-                label="Validade manual"
-                value={form.manualValidityValue}
-                onChange={(value) =>
-                  setForm((old) => ({
-                    ...old,
-                    manualValidityValue: value.replace(/\D/g, ''),
-                  }))
-                }
-                placeholder="Opcional"
-              />
+                    <select
+                      value={form.employeeId}
+                      onChange={(event) => pickEmployee(event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+                    >
+                      <option value="">Selecionar funcionário</option>
 
-              <div>
-                <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                  Unidade
-                </label>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <select
-                  value={form.manualValidityUnit}
-                  onChange={(event) =>
-                    setForm((old) => ({
-                      ...old,
-                      manualValidityUnit: event.target.value as 'days' | 'hours',
-                    }))
-                  }
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-                >
-                  <option value="days">Dias</option>
-                  <option value="hours">Horas</option>
-                </select>
-              </div>
-            </div>
+                  <Input
+                    label="Nome do responsável"
+                    value={form.responsibleName}
+                    onChange={(value) =>
+                      setForm((old) => ({
+                        ...old,
+                        responsibleName: value,
+                      }))
+                    }
+                    required
+                  />
 
-            <div className="md:col-span-2">
-              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                Observações
-              </label>
+                  <Input
+                    label="Quantidade"
+                    value={form.quantity}
+                    onChange={(value) =>
+                      setForm((old) => ({
+                        ...old,
+                        quantity: value,
+                      }))
+                    }
+                    placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
+                  />
 
-              <textarea
-                value={form.observations}
-                onChange={(event) =>
-                  setForm((old) => ({
-                    ...old,
-                    observations: event.target.value,
-                  }))
-                }
-                rows={3}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-              />
+                  <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">
+                    <Input
+                      label="Validade manual"
+                      value={form.manualValidityValue}
+                      onChange={(value) =>
+                        setForm((old) => ({
+                          ...old,
+                          manualValidityValue: value.replace(/\D/g, ''),
+                        }))
+                      }
+                      placeholder="Opcional"
+                    />
+
+                    <div>
+                      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                        Unidade
+                      </label>
+
+                      <select
+                        value={form.manualValidityUnit}
+                        onChange={(event) =>
+                          setForm((old) => ({
+                            ...old,
+                            manualValidityUnit: event.target.value as 'days' | 'hours',
+                          }))
+                        }
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+                      >
+                        <option value="days">Dias</option>
+                        <option value="hours">Horas</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                      Observações
+                    </label>
+
+                    <textarea
+                      value={form.observations}
+                      onChange={(event) =>
+                        setForm((old) => ({
+                          ...old,
+                          observations: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

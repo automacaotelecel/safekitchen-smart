@@ -1,7 +1,7 @@
 {
   "name": "SafeKitchen Smart",
   "short_name": "SafeKitchen",
-  "description": "Etiquetas sanitárias, validade automática e controle de qualidade para cozinhas.",
+  "description": "Etiquetas, validade automática e controle de qualidade para cozinhas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

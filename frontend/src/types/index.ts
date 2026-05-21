@@ -11,6 +11,7 @@ export type LabelType =
   | 'PRODUTO_QUIMICO';
 
 export type LabelStatus =
+  | 'ATIVA'
   | 'VALIDA'
   | 'VENCIDA'
   | 'PROXIMA'
@@ -41,9 +42,13 @@ export type Product = {
   defaultMode: ConservationMode;
   keywords: string;
   isGlobal: boolean;
+  active: boolean;
   createdAt?: string;
   updatedAt?: string;
   validityRules: ValidityRule[];
+  _count?: {
+    labels?: number;
+  };
 };
 
 export type ProductDetails = Product & {
@@ -55,6 +60,7 @@ export type Employee = {
   restaurantId?: string;
   name: string;
   role?: string | null;
+  shift?: string | null;
   phone?: string | null;
   email?: string | null;
   active: boolean;
@@ -63,42 +69,36 @@ export type Employee = {
 };
 
 export type LabelExtraData = {
-  // Amostras
   restaurantName?: string;
   collectionDate?: string;
   collectionTime?: string;
   discardAt?: string;
 
-  // Produto químico
   chemicalPurpose?: string;
   dilutionMl?: string;
   dilutionLiters?: string;
   preparationDate?: string;
   preparationTime?: string;
+  chemicalValidity?: string;
 
-  // Não conforme
   nonConformityReasons?: string[];
   otherNonConformity?: string;
   identificationDate?: string;
   actionTaken?: string[];
 
-  // Descongelamento / dessalgue
   thawingMethod?: string;
   startDate?: string;
   startTime?: string;
 
-  // Armazenamento de carnes
   meatType?: string;
   mapaSif?: string;
   receiptDate?: string;
   storageType?: string;
 
-  // Reembalagem
   repackagingDate?: string;
   originalValidity?: string;
   newValidity?: string;
 
-  // Campo aberto para futuras etiquetas
   [key: string]: unknown;
 };
 
@@ -107,6 +107,7 @@ export type Label = {
   restaurantId?: string;
   type: LabelType;
   productId?: string | null;
+  employeeId?: string | null;
   productName: string;
   brand?: string | null;
   supplier?: string | null;

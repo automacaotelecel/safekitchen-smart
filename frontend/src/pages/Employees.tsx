@@ -19,6 +19,7 @@ import type { Employee } from '../types';
 type EmployeeForm = {
   name: string;
   role: string;
+  shift: string;
   phone: string;
   email: string;
   active: boolean;
@@ -27,6 +28,7 @@ type EmployeeForm = {
 const emptyForm: EmployeeForm = {
   name: '',
   role: '',
+  shift: '',
   phone: '',
   email: '',
   active: true,
@@ -42,6 +44,15 @@ const roleSuggestions = [
   'Administrador',
 ];
 
+const shiftOptions = [
+  'Manhã',
+  'Tarde',
+  'Noite',
+  'Integral',
+  'Escala 12x36',
+  'Outro',
+];
+
 export function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<EmployeeForm>(emptyForm);
@@ -54,8 +65,15 @@ export function Employees() {
   const [saving, setSaving] = useState(false);
 
   async function load() {
-    const data = await api<Employee[]>('/api/employees');
-    setEmployees(data);
+    const data = await api<unknown>('/api/employees');
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray((data as any)?.employees)
+        ? (data as any).employees
+        : [];
+
+    setEmployees(list as Employee[]);
   }
 
   useEffect(() => {
@@ -71,9 +89,9 @@ export function Employees() {
     return employees.filter((employee) => {
       if (!showInactive && !employee.active) return false;
 
-      const content = `${employee.name} ${employee.role || ''} ${employee.phone || ''} ${
-        employee.email || ''
-      }`.toLowerCase();
+      const content = `${employee.name} ${employee.role || ''} ${(employee as any).shift || ''} ${
+        employee.phone || ''
+      } ${employee.email || ''}`.toLowerCase();
 
       return content.includes(query);
     });
@@ -96,6 +114,7 @@ export function Employees() {
         body: JSON.stringify({
           name: form.name,
           role: form.role || null,
+          shift: form.shift || null,
           phone: form.phone || null,
           email: form.email || null,
           active: true,
@@ -119,6 +138,7 @@ export function Employees() {
     setEditForm({
       name: employee.name || '',
       role: employee.role || '',
+      shift: ((employee as any).shift as string) || '',
       phone: employee.phone || '',
       email: employee.email || '',
       active: employee.active,
@@ -139,6 +159,7 @@ export function Employees() {
         body: JSON.stringify({
           name: editForm.name,
           role: editForm.role || null,
+          shift: editForm.shift || null,
           phone: editForm.phone || null,
           email: editForm.email || null,
           active: editForm.active,
@@ -227,7 +248,7 @@ export function Employees() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por nome, função, telefone ou e-mail..."
+                placeholder="Buscar por nome, função, turno, telefone ou e-mail..."
                 className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
               />
             </div>
@@ -310,6 +331,13 @@ export function Employees() {
               suggestions={roleSuggestions}
             />
 
+            <SelectField
+              label="Turno"
+              value={form.shift}
+              onChange={(value) => setForm((old) => ({ ...old, shift: value }))}
+              options={shiftOptions}
+            />
+
             <Field
               label="Telefone"
               value={form.phone}
@@ -332,17 +360,6 @@ export function Employees() {
               {saving ? 'Salvando...' : 'Salvar funcionário'}
             </button>
           </form>
-
-          <div className="mt-5 rounded-3xl bg-safe-soft p-4">
-            <p className="text-sm font-black text-safe-dark">
-              Como isso aparece no sistema?
-            </p>
-
-            <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-600">
-              Funcionários ativos aparecem no campo “Responsável” ao gerar etiquetas.
-              Inativos ficam preservados para manter histórico e auditoria.
-            </p>
-          </div>
         </aside>
       </div>
 
@@ -385,6 +402,13 @@ export function Employees() {
                 value={editForm.role}
                 onChange={(value) => setEditForm((old) => ({ ...old, role: value }))}
                 suggestions={roleSuggestions}
+              />
+
+              <SelectField
+                label="Turno"
+                value={editForm.shift}
+                onChange={(value) => setEditForm((old) => ({ ...old, shift: value }))}
+                options={shiftOptions}
               />
 
               <Field
@@ -449,22 +473,12 @@ function EmployeeCard({
   onToggleActive: () => void;
   onRemove: () => void;
 }) {
+  const shift = (employee as any).shift as string | null | undefined;
+
   return (
-    <div
-      className={`rounded-3xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-app dark:bg-[#202020] ${
-        employee.active
-          ? 'border-slate-200 dark:border-white/10'
-          : 'border-slate-200 opacity-70 dark:border-white/10'
-      }`}
-    >
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-app dark:border-white/10 dark:bg-[#202020]">
       <div className="flex items-start gap-4">
-        <div
-          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
-            employee.active
-              ? 'bg-safe-soft text-safe-green'
-              : 'bg-slate-100 text-slate-400 dark:bg-white/5'
-          }`}
-        >
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green">
           <UserRound size={24} />
         </div>
 
@@ -478,6 +492,12 @@ function EmployeeCard({
               <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-300">
                 {employee.role || 'Sem função cadastrada'}
               </p>
+
+              {shift && (
+                <p className="mt-1 text-xs font-black uppercase tracking-wider text-safe-green">
+                  Turno: {shift}
+                </p>
+              )}
             </div>
 
             <span
@@ -554,10 +574,7 @@ function EmployeeCard({
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm dark:border-white/10 dark:bg-[#202020]">
-      <p className="text-xl font-black text-safe-dark dark:text-white">
-        {value}
-      </p>
-
+      <p className="text-xl font-black text-safe-dark dark:text-white">{value}</p>
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
         {label}
       </p>
@@ -609,6 +626,39 @@ function Field({
           ))}
         </datalist>
       ) : null}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-black text-slate-700 dark:text-slate-200">
+        {label}
+      </label>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition focus:border-safe-green focus:bg-white dark:border-white/10 dark:bg-[#151515] dark:text-white"
+      >
+        <option value="">Selecionar turno</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

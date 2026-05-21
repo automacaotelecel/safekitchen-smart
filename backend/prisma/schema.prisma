@@ -8,11 +8,12 @@ datasource db {
 }
 
 model Restaurant {
-  id        String     @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
   logoUrl   String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   users     User[]
   employees Employee[]
   products  Product[]
@@ -20,86 +21,110 @@ model Restaurant {
 }
 
 model User {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   restaurantId String
   name         String
-  email        String     @unique
+  email        String   @unique
   passwordHash String
-  role         String     @default("ADMIN")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  role         String   @default("ADMIN")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
 }
 
 model Employee {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   restaurantId String
   name         String
   role         String?
+  shift        String?
   phone        String?
   email        String?
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
-  labels       Label[]
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  labels     Label[]
+
+  @@index([restaurantId])
+  @@index([active])
 }
 
 model Product {
-  id             String             @id @default(cuid())
-  restaurantId   String?
-  name           String
-  category       String
-  imageUrl       String?
-  defaultMode    String
-  keywords       String             @default("")
-  isGlobal       Boolean            @default(false)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  restaurant     Restaurant?        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  validityRules  ValidityRule[]
-  labels         Label[]
+  id           String   @id @default(cuid())
+  restaurantId String?
+  name         String
+  category     String
+  imageUrl     String?
+  defaultMode  String
+  keywords     String   @default("")
+  isGlobal     Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  restaurant    Restaurant?    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  validityRules ValidityRule[]
+  labels        Label[]
+
+  @@index([restaurantId])
   @@index([name])
   @@index([category])
+  @@index([active])
 }
 
 model ValidityRule {
-  id               String           @id @default(cuid())
-  productId         String?
-  category          String
-  description       String
-  conservationMode  String
-  validityValue     Int
-  validityUnit      String           @default("days")
-  source            String           @default("Tabela técnica configurável")
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  product           Product?         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  productId        String?
+  category         String
+  description      String
+  conservationMode String
+  validityValue    Int
+  validityUnit     String   @default("days")
+  source           String   @default("Tabela técnica configurável")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([category])
+  @@index([conservationMode])
 }
 
 model Label {
-  id                String           @id @default(cuid())
-  restaurantId      String
-  productId         String?
-  employeeId        String?
-  type              String
-  productName       String
-  brand             String?
-  supplier          String?
-  batch             String?
-  conservationMode  String
-  openedAt          DateTime
-  expiresAt         DateTime?
-  quantity          String?
-  responsibleName   String
-  observations      String?
-  extraData         String?
-  status            String           @default("ATIVA")
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  restaurant        Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  product           Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
-  employee          Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  id               String    @id @default(cuid())
+  restaurantId     String
+  productId        String?
+  employeeId       String?
+  type             String
+  productName      String
+  brand            String?
+  supplier         String?
+  batch            String?
+  conservationMode String
+  openedAt         DateTime
+  expiresAt        DateTime?
+  quantity         String?
+  responsibleName  String
+  observations     String?
+  extraData        String?
+  status           String    @default("ATIVA")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  product    Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  employee   Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([productId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([createdAt])
 }

@@ -12,6 +12,7 @@ router.use(authMiddleware);
 const createEmployeeSchema = z.object({
   name: z.string().min(2, 'Informe o nome do funcionário.'),
   role: z.string().optional().nullable(),
+  shift: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   email: z.string().email('E-mail inválido.').optional().or(z.literal('')).nullable(),
   active: z.boolean().optional(),
@@ -20,6 +21,7 @@ const createEmployeeSchema = z.object({
 const updateEmployeeSchema = z.object({
   name: z.string().min(2, 'Informe o nome do funcionário.').optional(),
   role: z.string().optional().nullable(),
+  shift: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   email: z.string().email('E-mail inválido.').optional().or(z.literal('')).nullable(),
   active: z.boolean().optional(),
@@ -59,6 +61,7 @@ router.post('/', async (req, res) => {
       restaurantId: req.user.restaurantId,
       name: parsed.data.name.trim(),
       role: parsed.data.role?.trim() || null,
+      shift: parsed.data.shift?.trim() || null,
       phone: parsed.data.phone?.trim() || null,
       email: parsed.data.email?.trim() || null,
       active: parsed.data.active ?? true,
@@ -95,6 +98,7 @@ router.patch('/:id', async (req, res) => {
     data: {
       ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
       ...(parsed.data.role !== undefined ? { role: parsed.data.role?.trim() || null } : {}),
+      ...(parsed.data.shift !== undefined ? { shift: parsed.data.shift?.trim() || null } : {}),
       ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone?.trim() || null } : {}),
       ...(parsed.data.email !== undefined ? { email: parsed.data.email?.trim() || null } : {}),
       ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
