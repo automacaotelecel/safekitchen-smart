@@ -18,6 +18,7 @@ const identifySchema = z.object({
 type GeminiSuggestion = {
   productName: string;
   brand: string;
+  detectedBatch: string;
   category: string;
   conservationMode: 'AMBIENTE' | 'REFRIGERADO' | 'CONGELADO';
   labelType:
@@ -38,8 +39,12 @@ function cleanBase64(imageBase64: string) {
   return imageBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
 }
 
-function safeJsonParse(text: string): GeminiSuggestion {
-  const cleaned = text
+function text(value: unknown) {
+  return String(value || '').trim();
+}
+
+function safeJsonParse(rawText: string): GeminiSuggestion {
+  const cleaned = rawText
     .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();
@@ -54,32 +59,39 @@ function safeJsonParse(text: string): GeminiSuggestion {
   const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
   const parsed = JSON.parse(jsonText) as Partial<GeminiSuggestion>;
 
+  const conservationMode =
+    parsed.conservationMode === 'AMBIENTE' ||
+    parsed.conservationMode === 'REFRIGERADO' ||
+    parsed.conservationMode === 'CONGELADO'
+      ? parsed.conservationMode
+      : 'REFRIGERADO';
+
+  const labelType =
+    parsed.labelType === 'PRODUCAO' ||
+    parsed.labelType === 'DESCONGELAMENTO_DESSALGUE' ||
+    parsed.labelType === 'ARMAZENAMENTO_CARNES' ||
+    parsed.labelType === 'REEMBALAGEM' ||
+    parsed.labelType === 'AMOSTRAS' ||
+    parsed.labelType === 'NAO_CONFORME' ||
+    parsed.labelType === 'PRODUTO_QUIMICO'
+      ? parsed.labelType
+      : 'PRODUTO_ABERTO';
+
+  const confidence =
+    typeof parsed.confidence === 'number'
+      ? Math.min(Math.max(parsed.confidence, 0), 1)
+      : 0.45;
+
   return {
-    productName: String(parsed.productName || '').trim(),
-    brand: String(parsed.brand || '').trim(),
-    category: String(parsed.category || '').trim(),
-    conservationMode:
-      parsed.conservationMode === 'AMBIENTE' ||
-      parsed.conservationMode === 'REFRIGERADO' ||
-      parsed.conservationMode === 'CONGELADO'
-        ? parsed.conservationMode
-        : 'REFRIGERADO',
-    labelType:
-      parsed.labelType === 'PRODUCAO' ||
-      parsed.labelType === 'DESCONGELAMENTO_DESSALGUE' ||
-      parsed.labelType === 'ARMAZENAMENTO_CARNES' ||
-      parsed.labelType === 'REEMBALAGEM' ||
-      parsed.labelType === 'AMOSTRAS' ||
-      parsed.labelType === 'NAO_CONFORME' ||
-      parsed.labelType === 'PRODUTO_QUIMICO'
-        ? parsed.labelType
-        : 'PRODUTO_ABERTO',
-    keywords: String(parsed.keywords || '').trim(),
-    confidence:
-      typeof parsed.confidence === 'number'
-        ? Math.min(Math.max(parsed.confidence, 0), 1)
-        : 0.5,
-    notes: String(parsed.notes || '').trim(),
+    productName: text(parsed.productName).toUpperCase(),
+    brand: text(parsed.brand),
+    detectedBatch: text(parsed.detectedBatch),
+    category: text(parsed.category) || 'Outros',
+    conservationMode,
+    labelType,
+    keywords: text(parsed.keywords),
+    confidence,
+    notes: text(parsed.notes),
   };
 }
 
@@ -91,15 +103,18 @@ function normalizeText(value: string) {
     .trim();
 }
 
-function scoreProduct(product: { name: string; category: string; keywords: string }, suggestion: GeminiSuggestion) {
+function scoreProduct(
+  product: { name: string; category: string; keywords: string },
+  suggestion: GeminiSuggestion
+) {
   const productText = normalizeText(`${product.name} ${product.category} ${product.keywords}`);
-  const aiText = normalizeText(`${suggestion.productName} ${suggestion.brand} ${suggestion.category} ${suggestion.keywords}`);
+  const aiText = normalizeText(
+    `${suggestion.productName} ${suggestion.brand} ${suggestion.category} ${suggestion.keywords}`
+  );
 
   let score = 0;
 
-  const terms = aiText
-    .split(/\s+/)
-    .filter((term) => term.length >= 3);
+  const terms = Array.from(new Set(aiText.split(/\s+/).filter((term) => term.length >= 3)));
 
   for (const term of terms) {
     if (productText.includes(term)) {
@@ -113,6 +128,10 @@ function scoreProduct(product: { name: string; category: string; keywords: strin
     score += 6;
   }
 
+  if (suggestion.brand && productText.includes(normalizeText(suggestion.brand))) {
+    score += 2;
+  }
+
   return score;
 }
 
@@ -120,19 +139,25 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
   const products = await prisma.product.findMany({
     where: {
       OR: [{ isGlobal: true }, { restaurantId }],
+      active: true,
     },
     include: {
       validityRules: true,
+      _count: {
+        select: {
+          labels: true,
+        },
+      },
     },
-    take: 300,
+    take: 400,
   });
 
   const ranked = products
-    .map((product: (typeof products)[number]) => ({
+    .map((product) => ({
       product,
       score: scoreProduct(product, suggestion),
     }))
-    .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
 
@@ -153,28 +178,30 @@ async function askGemini(imageBase64: string, mimeType: string) {
   const prompt = `
 Você é uma IA de apoio para um sistema de etiquetas sanitárias de cozinha profissional chamado SafeKitchen Smart.
 
-Analise a imagem do produto alimentício ou item de cozinha.
+Analise a imagem do produto alimentício, embalagem, rótulo ou item de cozinha.
 
-Retorne APENAS um JSON válido, sem markdown, sem explicação fora do JSON.
+Retorne APENAS um JSON válido, sem markdown, sem comentários e sem explicação fora do JSON.
 
 Campos obrigatórios:
 {
-  "productName": "nome provável do produto em português, em caixa alta",
-  "brand": "marca provável, se visível, ou string vazia",
-  "category": "categoria provável: Laticínios, Carnes e frios, Hortifruti, Panificação, Molhos e temperos, Enlatados e conservas, Bebidas, Produto químico, Outros",
+  "productName": "nome provável do produto em português, em CAIXA ALTA",
+  "brand": "marca provável se estiver visível, ou string vazia",
+  "detectedBatch": "lote provável se estiver claramente visível, ou string vazia. Nunca invente lote.",
+  "category": "categoria provável: Laticínios, Carnes e frios, Hortifruti, Panificação, Molhos e temperos, Enlatados e conservas, Bebidas, Produto químico, Grãos e secos, Outros",
   "conservationMode": "AMBIENTE ou REFRIGERADO ou CONGELADO",
   "labelType": "PRODUTO_ABERTO ou PRODUCAO ou DESCONGELAMENTO_DESSALGUE ou ARMAZENAMENTO_CARNES ou REEMBALAGEM ou AMOSTRAS ou NAO_CONFORME ou PRODUTO_QUIMICO",
-  "keywords": "palavras úteis para busca no banco",
+  "keywords": "palavras úteis para busca no banco, separadas por espaço",
   "confidence": número entre 0 e 1,
-  "notes": "observação curta orientando o usuário a conferir dados como lote, marca e validade"
+  "notes": "observação curta orientando o usuário a conferir nome, marca, lote e validade"
 }
 
 Regras:
 - Se for alimento industrializado aberto, use labelType PRODUTO_ABERTO.
-- Se parecer produto químico de limpeza, use labelType PRODUTO_QUIMICO.
+- Se parecer produto químico de limpeza, detergente, sanitizante, desinfetante ou similar, use labelType PRODUTO_QUIMICO.
+- Se parecer carne, peixe, frango ou suíno embalado/armazenado, use ARMAZENAMENTO_CARNES.
 - Se não tiver certeza, use confidence baixo.
-- Nunca invente lote, data de fabricação ou validade.
-- Não gere etiqueta. Apenas sugira o preenchimento.
+- Nunca invente lote, data de fabricação, validade ou informação que não esteja visível.
+- Não gere etiqueta. Apenas sugira preenchimento.
 `;
 
   const response = await fetch(url, {
@@ -200,10 +227,10 @@ Regras:
         },
       ],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.15,
         topP: 0.8,
         topK: 40,
-        maxOutputTokens: 800,
+        maxOutputTokens: 900,
         responseMimeType: 'application/json',
       },
     }),
@@ -215,13 +242,13 @@ Regras:
     throw new Error(data?.error?.message || 'Erro ao consultar IA de visão.');
   }
 
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (!text) {
+  if (!responseText) {
     throw new Error('A IA não retornou conteúdo para a imagem.');
   }
 
-  return safeJsonParse(text);
+  return safeJsonParse(responseText);
 }
 
 router.post('/identify-product', async (req, res) => {
@@ -246,7 +273,7 @@ router.post('/identify-product', async (req, res) => {
       suggestion,
       matchedProduct,
       warning:
-        'A identificação por câmera é uma sugestão automática. Confira os dados antes de gerar a etiqueta.',
+        'A identificação por câmera é uma sugestão automática. Confira os dados antes de salvar ou gerar etiqueta.',
     });
   } catch (error) {
     return fail(

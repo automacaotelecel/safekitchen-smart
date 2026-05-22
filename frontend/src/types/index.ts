@@ -70,6 +70,7 @@ export type Employee = {
 
 export type LabelExtraData = {
   restaurantName?: string;
+  sampleShift?: string;
   collectionDate?: string;
   collectionTime?: string;
   discardAt?: string;
@@ -159,6 +160,7 @@ export type DashboardSummary = {
 export type VisionSuggestion = {
   productName: string;
   brand: string;
+  detectedBatch?: string;
   category: string;
   conservationMode: ConservationMode;
   labelType: LabelType;

@@ -41,6 +41,7 @@ type FormState = {
 
 type ExtraState = {
   restaurantName: string;
+  sampleShift: string;
 
   collectionDate: string;
   collectionTime: string;
@@ -92,6 +93,7 @@ const initialForm: FormState = {
 
 const initialExtra: ExtraState = {
   restaurantName: 'SafeKitchen Smart',
+  sampleShift: '',
 
   collectionDate: now.toISOString().slice(0, 10),
   collectionTime: now.toTimeString().slice(0, 5),
@@ -149,6 +151,37 @@ const storageOptions = ['Resfriado', 'Congelado'];
 
 const chemicalPurposeOptions = ['Higienização', 'Desinfecção', 'Limpeza pesada'];
 
+const sampleShiftOptions = ['Almoço', 'Jantar', 'Ceia', 'Café da manhã', 'Lanche', 'Outro'];
+
+const visibleBrandTypes: LabelType[] = ['REEMBALAGEM'];
+
+const hiddenProductSearchTypes: LabelType[] = ['AMOSTRAS'];
+
+const hideConservationTypes: LabelType[] = ['PRODUTO_QUIMICO'];
+
+const hideOpenedAtTypes: LabelType[] = ['NAO_CONFORME', 'PRODUTO_QUIMICO'];
+
+const openedAtInAdditionalTypes: LabelType[] = ['ARMAZENAMENTO_CARNES'];
+
+const showSupplierBatchInAdditionalTypes: LabelType[] = [
+  'PRODUTO_ABERTO',
+  'PRODUCAO',
+  'DESCONGELAMENTO_DESSALGUE',
+  'ARMAZENAMENTO_CARNES',
+  'REEMBALAGEM',
+  'NAO_CONFORME',
+  'PRODUTO_QUIMICO',
+];
+
+const showBrandInAdditionalTypes: LabelType[] = [
+  'PRODUTO_ABERTO',
+  'PRODUCAO',
+  'DESCONGELAMENTO_DESSALGUE',
+  'ARMAZENAMENTO_CARNES',
+  'NAO_CONFORME',
+  'PRODUTO_QUIMICO',
+];
+
 export function NewLabel() {
   const [searchParams] = useSearchParams();
 
@@ -165,7 +198,21 @@ export function NewLabel() {
   const [showProductOptions, setShowProductOptions] = useState(false);
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
 
+  const selectedType = labelTypes.find((type) => type.value === form.type);
+
   const isSampleLabel = form.type === 'AMOSTRAS';
+  const shouldShowProductSearch = !hiddenProductSearchTypes.includes(form.type);
+  const shouldShowConservation = !hideConservationTypes.includes(form.type);
+  const shouldShowOpenedAt =
+    !hideOpenedAtTypes.includes(form.type) && !openedAtInAdditionalTypes.includes(form.type);
+
+  const shouldShowOpenedAtInAdditional = openedAtInAdditionalTypes.includes(form.type);
+
+  const shouldShowVisibleBrand = visibleBrandTypes.includes(form.type);
+  const shouldShowBrandAdditional =
+    showBrandInAdditionalTypes.includes(form.type) && !shouldShowVisibleBrand;
+
+  const shouldShowSupplierBatchAdditional = showSupplierBatchInAdditionalTypes.includes(form.type);
 
   useEffect(() => {
     api<Product[]>('/api/products?includeInactive=0')
@@ -222,8 +269,6 @@ export function NewLabel() {
     selectedProduct?.validityRules.find(
       (rule) => rule.conservationMode === form.conservationMode
     ) || selectedProduct?.validityRules[0];
-
-  const selectedType = labelTypes.find((type) => type.value === form.type);
 
   const previewExpiration = useMemo(() => {
     const opened = new Date(form.openedAt);
@@ -314,6 +359,9 @@ export function NewLabel() {
       type,
       productId: type === 'AMOSTRAS' ? '' : old.productId,
       productName: type === 'AMOSTRAS' ? '' : old.productName,
+      brand: type === 'AMOSTRAS' ? '' : old.brand,
+      supplier: type === 'AMOSTRAS' ? '' : old.supplier,
+      batch: type === 'AMOSTRAS' ? '' : old.batch,
     }));
 
     if (type === 'AMOSTRAS') {
@@ -344,6 +392,7 @@ export function NewLabel() {
     if (form.type === 'AMOSTRAS') {
       return {
         restaurantName: extra.restaurantName,
+        sampleShift: extra.sampleShift,
         collectionDate: extra.collectionDate,
         collectionTime: extra.collectionTime,
         discardAt: previewExpiration?.toISOString() || null,
@@ -384,6 +433,7 @@ export function NewLabel() {
         mapaSif: extra.mapaSif,
         receiptDate: extra.receiptDate,
         storageType: extra.storageType,
+        openedAt: form.openedAt,
       };
     }
 
@@ -523,123 +573,26 @@ export function NewLabel() {
               </div>
             </div>
 
+            {shouldShowProductSearch && (
+              <ProductSearch
+                search={search}
+                setSearch={setSearch}
+                form={form}
+                setForm={setForm}
+                productOptions={productOptions}
+                showProductOptions={showProductOptions}
+                setShowProductOptions={setShowProductOptions}
+                pickProduct={pickProduct}
+                clearProduct={clearProduct}
+              />
+            )}
+
             <SpecificFields
               type={form.type}
               extra={extra}
               setExtra={setExtra}
               toggleExtraArray={toggleExtraArray}
             />
-
-            {!isSampleLabel && (
-              <div className="md:col-span-2">
-                <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                  Buscar produto
-                </label>
-
-                <div
-                  className="relative mt-2"
-                  onBlur={() => {
-                    window.setTimeout(() => setShowProductOptions(false), 160);
-                  }}
-                >
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition focus-within:border-safe-green focus-within:bg-white dark:border-white/10 dark:bg-[#151515] dark:focus-within:bg-[#151515]">
-                    <Search size={18} className="text-slate-400" />
-
-                    <input
-                      value={search}
-                      onFocus={() => setShowProductOptions(true)}
-                      onChange={(event) => {
-                        setSearch(event.target.value);
-                        setShowProductOptions(true);
-
-                        setForm((old) => ({
-                          ...old,
-                          productName: event.target.value,
-                          productId: '',
-                        }));
-                      }}
-                      placeholder="Clique ou digite para buscar um produto..."
-                      className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
-                    />
-
-                    {search && (
-                      <button
-                        type="button"
-                        onClick={clearProduct}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:bg-white/10"
-                      >
-                        <X size={15} />
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setShowProductOptions((old) => !old)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-safe-soft text-safe-green dark:bg-white/10"
-                    >
-                      {showProductOptions ? (
-                        <ChevronUp size={16} />
-                      ) : (
-                        <ChevronDown size={16} />
-                      )}
-                    </button>
-                  </div>
-
-                  {showProductOptions && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#202020]">
-                      <div className="max-h-[320px] overflow-y-auto p-2">
-                        {productOptions.length > 0 ? (
-                          productOptions.map((product) => (
-                            <button
-                              type="button"
-                              key={product.id}
-                              onClick={() => pickProduct(product)}
-                              className={`flex w-full items-start justify-between gap-3 rounded-2xl p-3 text-left transition ${
-                                form.productId === product.id
-                                  ? 'bg-safe-soft text-safe-dark dark:bg-emerald-950/40 dark:text-white'
-                                  : 'hover:bg-slate-50 dark:hover:bg-white/5'
-                              }`}
-                            >
-                              <div>
-                                <p className="text-sm font-black text-slate-900 dark:text-white">
-                                  {product.name}
-                                </p>
-
-                                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
-                                  {product.category} • {product.defaultMode}
-                                </p>
-                              </div>
-
-                              {form.productId === product.id && (
-                                <span className="rounded-full bg-safe-green px-3 py-1 text-[10px] font-black uppercase text-white">
-                                  Selecionado
-                                </span>
-                              )}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-                            Nenhum produto encontrado. Você pode continuar preenchendo manualmente.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {form.productId && (
-                  <div className="mt-3 rounded-2xl border border-safe-green bg-safe-soft p-3 dark:border-emerald-500/40 dark:bg-emerald-950/30">
-                    <p className="text-xs font-black uppercase tracking-wider text-safe-green">
-                      Produto selecionado
-                    </p>
-
-                    <p className="mt-1 text-sm font-black text-safe-dark dark:text-white">
-                      {form.productName}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
 
             <Input
               label={isSampleLabel ? 'Produto da amostra' : 'Produto/produção'}
@@ -654,207 +607,62 @@ export function NewLabel() {
               placeholder={isSampleLabel ? 'Ex.: salada, arroz, feijão, molho...' : undefined}
             />
 
-            <Input
-              label="Marca"
-              value={form.brand}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  brand: value,
-                }))
-              }
+            <ResponsibleFields
+              employees={employees}
+              form={form}
+              setForm={setForm}
+              pickEmployee={pickEmployee}
             />
 
-            <Input
-              label="Fornecedor"
-              value={form.supplier}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  supplier: value,
-                }))
-              }
-            />
-
-            <Input
-              label="Lote"
-              value={form.batch}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  batch: value,
-                }))
-              }
-            />
-
-            <div>
-              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                Modo de conservação
-              </label>
-
-              <select
-                value={form.conservationMode}
-                onChange={(event) =>
+            {shouldShowVisibleBrand && (
+              <Input
+                label="Marca"
+                value={form.brand}
+                onChange={(value) =>
                   setForm((old) => ({
                     ...old,
-                    conservationMode: event.target.value as ConservationMode,
+                    brand: value,
                   }))
                 }
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-              >
-                <option value="AMBIENTE">Temperatura ambiente</option>
-                <option value="REFRIGERADO">Refrigerado</option>
-                <option value="CONGELADO">Congelado</option>
-              </select>
-            </div>
+              />
+            )}
 
-            <div>
-              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                Aberto/manipulado em
-              </label>
+            {shouldShowConservation && (
+              <div>
+                <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                  Modo de conservação
+                </label>
 
-              <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-[#151515]">
-                <CalendarDays size={18} className="text-slate-400" />
-
-                <input
-                  type="datetime-local"
-                  value={form.openedAt}
+                <select
+                  value={form.conservationMode}
                   onChange={(event) =>
                     setForm((old) => ({
                       ...old,
-                      openedAt: event.target.value,
+                      conservationMode: event.target.value as ConservationMode,
                     }))
                   }
-                  className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
-                />
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+                >
+                  <option value="AMBIENTE">Temperatura ambiente</option>
+                  <option value="REFRIGERADO">Refrigerado</option>
+                  <option value="CONGELADO">Congelado</option>
+                </select>
               </div>
-            </div>
+            )}
 
-            <div className="md:col-span-2 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#151515]">
-              <button
-                type="button"
-                onClick={() => setShowAdditionalFields((old) => !old)}
-                className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50 dark:hover:bg-white/5"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-safe-dark dark:text-white">
-                    Detalhes adicionais
-                  </p>
+            {shouldShowOpenedAt && (
+              <OpenedAtField form={form} setForm={setForm} />
+            )}
 
-                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
-                    Responsável, quantidade, validade manual e observações.
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green dark:bg-white/10">
-                  {showAdditionalFields ? (
-                    <ChevronUp size={18} />
-                  ) : (
-                    <ChevronDown size={18} />
-                  )}
-                </div>
-              </button>
-
-              {showAdditionalFields && (
-                <div className="grid gap-4 border-t border-slate-100 p-4 dark:border-white/10 md:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                      Responsável
-                    </label>
-
-                    <select
-                      value={form.employeeId}
-                      onChange={(event) => pickEmployee(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-                    >
-                      <option value="">Selecionar funcionário</option>
-
-                      {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <Input
-                    label="Nome do responsável"
-                    value={form.responsibleName}
-                    onChange={(value) =>
-                      setForm((old) => ({
-                        ...old,
-                        responsibleName: value,
-                      }))
-                    }
-                    required
-                  />
-
-                  <Input
-                    label="Quantidade"
-                    value={form.quantity}
-                    onChange={(value) =>
-                      setForm((old) => ({
-                        ...old,
-                        quantity: value,
-                      }))
-                    }
-                    placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
-                  />
-
-                  <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">
-                    <Input
-                      label="Validade manual"
-                      value={form.manualValidityValue}
-                      onChange={(value) =>
-                        setForm((old) => ({
-                          ...old,
-                          manualValidityValue: value.replace(/\D/g, ''),
-                        }))
-                      }
-                      placeholder="Opcional"
-                    />
-
-                    <div>
-                      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                        Unidade
-                      </label>
-
-                      <select
-                        value={form.manualValidityUnit}
-                        onChange={(event) =>
-                          setForm((old) => ({
-                            ...old,
-                            manualValidityUnit: event.target.value as 'days' | 'hours',
-                          }))
-                        }
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-                      >
-                        <option value="days">Dias</option>
-                        <option value="hours">Horas</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-                      Observações
-                    </label>
-
-                    <textarea
-                      value={form.observations}
-                      onChange={(event) =>
-                        setForm((old) => ({
-                          ...old,
-                          observations: event.target.value,
-                        }))
-                      }
-                      rows={3}
-                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            <AdditionalFields
+              form={form}
+              setForm={setForm}
+              showAdditionalFields={showAdditionalFields}
+              setShowAdditionalFields={setShowAdditionalFields}
+              shouldShowBrandAdditional={shouldShowBrandAdditional}
+              shouldShowSupplierBatchAdditional={shouldShowSupplierBatchAdditional}
+              shouldShowOpenedAtInAdditional={shouldShowOpenedAtInAdditional}
+            />
           </div>
 
           {error && (
@@ -888,16 +696,46 @@ export function NewLabel() {
               </div>
 
               <div className="space-y-2 p-4 text-sm">
-                <PreviewRow label="Conservação" value={form.conservationMode} />
-                <PreviewRow label="Lote" value={form.batch || '-'} />
-                <PreviewRow
-                  label="Data base"
-                  value={
-                    form.openedAt
-                      ? format(new Date(form.openedAt), 'dd/MM/yyyy HH:mm')
-                      : '-'
-                  }
-                />
+                {shouldShowConservation && (
+                  <PreviewRow label="Conservação" value={form.conservationMode} />
+                )}
+
+                {form.batch && <PreviewRow label="Lote" value={form.batch} />}
+
+                {shouldShowOpenedAt && (
+                  <PreviewRow
+                    label="Data base"
+                    value={
+                      form.openedAt
+                        ? format(new Date(form.openedAt), 'dd/MM/yyyy HH:mm')
+                        : '-'
+                    }
+                  />
+                )}
+
+                {form.type === 'ARMAZENAMENTO_CARNES' && (
+                  <>
+                    <PreviewRow label="Tipo" value={extra.meatType || '-'} />
+                    <PreviewRow label="MAPA/SIF" value={extra.mapaSif || '-'} />
+                    <PreviewRow label="Recebimento" value={formatDatePreview(extra.receiptDate)} />
+                    <PreviewRow label="Armazenamento" value={extra.storageType || '-'} />
+                  </>
+                )}
+
+                {form.type === 'AMOSTRAS' && (
+                  <>
+                    <PreviewRow label="Turno" value={extra.sampleShift || '-'} />
+                    <PreviewRow label="Coleta" value={`${formatDatePreview(extra.collectionDate)} ${extra.collectionTime || ''}`} />
+                  </>
+                )}
+
+                {form.type === 'PRODUTO_QUIMICO' && (
+                  <>
+                    <PreviewRow label="Finalidade" value={extra.chemicalPurpose || '-'} />
+                    <PreviewRow label="Validade" value={formatDatePreview(extra.chemicalValidity)} />
+                  </>
+                )}
+
                 <PreviewRow
                   label="Validade"
                   value={
@@ -906,6 +744,7 @@ export function NewLabel() {
                       : '-'
                   }
                 />
+
                 <PreviewRow
                   label="Responsável"
                   value={form.responsibleName || '-'}
@@ -913,7 +752,7 @@ export function NewLabel() {
               </div>
             </div>
 
-            {selectedRule && form.type !== 'NAO_CONFORME' && (
+            {selectedRule && form.type !== 'NAO_CONFORME' && form.type !== 'PRODUTO_QUIMICO' && (
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-300">
                 Regra sugerida: {selectedRule.validityValue}{' '}
                 {selectedRule.validityUnit === 'hours' ? 'hora(s)' : 'dia(s)'} •{' '}
@@ -961,6 +800,376 @@ export function NewLabel() {
   );
 }
 
+function ProductSearch({
+  search,
+  setSearch,
+  form,
+  setForm,
+  productOptions,
+  showProductOptions,
+  setShowProductOptions,
+  pickProduct,
+  clearProduct,
+}: {
+  search: string;
+  setSearch: Dispatch<SetStateAction<string>>;
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  productOptions: Product[];
+  showProductOptions: boolean;
+  setShowProductOptions: Dispatch<SetStateAction<boolean>>;
+  pickProduct: (product: Product) => void;
+  clearProduct: () => void;
+}) {
+  return (
+    <div className="md:col-span-2">
+      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+        Buscar produto
+      </label>
+
+      <div
+        className="relative mt-2"
+        onBlur={() => {
+          window.setTimeout(() => setShowProductOptions(false), 160);
+        }}
+      >
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition focus-within:border-safe-green focus-within:bg-white dark:border-white/10 dark:bg-[#151515] dark:focus-within:bg-[#151515]">
+          <Search size={18} className="text-slate-400" />
+
+          <input
+            value={search}
+            onFocus={() => setShowProductOptions(true)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setShowProductOptions(true);
+
+              setForm((old) => ({
+                ...old,
+                productName: event.target.value,
+                productId: '',
+              }));
+            }}
+            placeholder="Clique ou digite para buscar um produto..."
+            className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
+          />
+
+          {search && (
+            <button
+              type="button"
+              onClick={clearProduct}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:bg-white/10"
+            >
+              <X size={15} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowProductOptions((old) => !old)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-safe-soft text-safe-green dark:bg-white/10"
+          >
+            {showProductOptions ? (
+              <ChevronUp size={16} />
+            ) : (
+              <ChevronDown size={16} />
+            )}
+          </button>
+        </div>
+
+        {showProductOptions && (
+          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#202020]">
+            <div className="max-h-[320px] overflow-y-auto p-2">
+              {productOptions.length > 0 ? (
+                productOptions.map((product) => (
+                  <button
+                    type="button"
+                    key={product.id}
+                    onClick={() => pickProduct(product)}
+                    className={`flex w-full items-start justify-between gap-3 rounded-2xl p-3 text-left transition ${
+                      form.productId === product.id
+                        ? 'bg-safe-soft text-safe-dark dark:bg-emerald-950/40 dark:text-white'
+                        : 'hover:bg-slate-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">
+                        {product.name}
+                      </p>
+
+                      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
+                        {product.category} • {product.defaultMode}
+                      </p>
+                    </div>
+
+                    {form.productId === product.id && (
+                      <span className="rounded-full bg-safe-green px-3 py-1 text-[10px] font-black uppercase text-white">
+                        Selecionado
+                      </span>
+                    )}
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                  Nenhum produto encontrado. Você pode continuar preenchendo manualmente.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {form.productId && (
+        <div className="mt-3 rounded-2xl border border-safe-green bg-safe-soft p-3 dark:border-emerald-500/40 dark:bg-emerald-950/30">
+          <p className="text-xs font-black uppercase tracking-wider text-safe-green">
+            Produto selecionado
+          </p>
+
+          <p className="mt-1 text-sm font-black text-safe-dark dark:text-white">
+            {form.productName}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResponsibleFields({
+  employees,
+  form,
+  setForm,
+  pickEmployee,
+}: {
+  employees: Employee[];
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  pickEmployee: (employeeId: string) => void;
+}) {
+  return (
+    <>
+      <div>
+        <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+          Responsável
+        </label>
+
+        <select
+          value={form.employeeId}
+          onChange={(event) => pickEmployee(event.target.value)}
+          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+        >
+          <option value="">Selecionar funcionário</option>
+
+          {employees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <Input
+        label="Nome do responsável"
+        value={form.responsibleName}
+        onChange={(value) =>
+          setForm((old) => ({
+            ...old,
+            responsibleName: value,
+          }))
+        }
+        required
+      />
+    </>
+  );
+}
+
+function OpenedAtField({
+  form,
+  setForm,
+}: {
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+}) {
+  return (
+    <div>
+      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+        Aberto/manipulado em
+      </label>
+
+      <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-[#151515]">
+        <CalendarDays size={18} className="text-slate-400" />
+
+        <input
+          type="datetime-local"
+          value={form.openedAt}
+          onChange={(event) =>
+            setForm((old) => ({
+              ...old,
+              openedAt: event.target.value,
+            }))
+          }
+          className="w-full bg-transparent text-sm font-semibold outline-none dark:text-white"
+        />
+      </div>
+    </div>
+  );
+}
+
+function AdditionalFields({
+  form,
+  setForm,
+  showAdditionalFields,
+  setShowAdditionalFields,
+  shouldShowBrandAdditional,
+  shouldShowSupplierBatchAdditional,
+  shouldShowOpenedAtInAdditional,
+}: {
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  showAdditionalFields: boolean;
+  setShowAdditionalFields: Dispatch<SetStateAction<boolean>>;
+  shouldShowBrandAdditional: boolean;
+  shouldShowSupplierBatchAdditional: boolean;
+  shouldShowOpenedAtInAdditional: boolean;
+}) {
+  return (
+    <div className="md:col-span-2 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#151515]">
+      <button
+        type="button"
+        onClick={() => setShowAdditionalFields((old) => !old)}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50 dark:hover:bg-white/5"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-black text-safe-dark dark:text-white">
+            Detalhes adicionais
+          </p>
+
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
+            Informações opcionais da etiqueta.
+          </p>
+        </div>
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green dark:bg-white/10">
+          {showAdditionalFields ? (
+            <ChevronUp size={18} />
+          ) : (
+            <ChevronDown size={18} />
+          )}
+        </div>
+      </button>
+
+      {showAdditionalFields && (
+        <div className="grid gap-4 border-t border-slate-100 p-4 dark:border-white/10 md:grid-cols-2">
+          {shouldShowBrandAdditional && (
+            <Input
+              label="Marca"
+              value={form.brand}
+              onChange={(value) =>
+                setForm((old) => ({
+                  ...old,
+                  brand: value,
+                }))
+              }
+            />
+          )}
+
+          {shouldShowSupplierBatchAdditional && (
+            <>
+              <Input
+                label="Fornecedor"
+                value={form.supplier}
+                onChange={(value) =>
+                  setForm((old) => ({
+                    ...old,
+                    supplier: value,
+                  }))
+                }
+              />
+
+              <Input
+                label="Lote"
+                value={form.batch}
+                onChange={(value) =>
+                  setForm((old) => ({
+                    ...old,
+                    batch: value,
+                  }))
+                }
+              />
+            </>
+          )}
+
+          {shouldShowOpenedAtInAdditional && (
+            <OpenedAtField form={form} setForm={setForm} />
+          )}
+
+          <Input
+            label="Quantidade"
+            value={form.quantity}
+            onChange={(value) =>
+              setForm((old) => ({
+                ...old,
+                quantity: value,
+              }))
+            }
+            placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
+          />
+
+          <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">
+            <Input
+              label="Validade manual"
+              value={form.manualValidityValue}
+              onChange={(value) =>
+                setForm((old) => ({
+                  ...old,
+                  manualValidityValue: value.replace(/\D/g, ''),
+                }))
+              }
+              placeholder="Opcional"
+            />
+
+            <div>
+              <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+                Unidade
+              </label>
+
+              <select
+                value={form.manualValidityUnit}
+                onChange={(event) =>
+                  setForm((old) => ({
+                    ...old,
+                    manualValidityUnit: event.target.value as 'days' | 'hours',
+                  }))
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+              >
+                <option value="days">Dias</option>
+                <option value="hours">Horas</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+              Observações
+            </label>
+
+            <textarea
+              value={form.observations}
+              onChange={(event) =>
+                setForm((old) => ({
+                  ...old,
+                  observations: event.target.value,
+                }))
+              }
+              rows={3}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpecificFields({
   type,
   extra,
@@ -983,6 +1192,15 @@ function SpecificFields({
           value={extra.restaurantName}
           onChange={(value) =>
             setExtra((old) => ({ ...old, restaurantName: value }))
+          }
+        />
+
+        <SelectTextField
+          label="Turno"
+          value={extra.sampleShift}
+          options={sampleShiftOptions}
+          onChange={(value) =>
+            setExtra((old) => ({ ...old, sampleShift: value }))
           }
         />
 
@@ -1009,49 +1227,13 @@ function SpecificFields({
 
   if (type === 'PRODUTO_QUIMICO') {
     return (
-      <FieldBox title="Dados de produto químico">
+      <FieldBox title="Dados do produto químico">
         <OptionGroup
           label="Finalidade"
           options={chemicalPurposeOptions}
           value={extra.chemicalPurpose}
           onChange={(value) =>
             setExtra((old) => ({ ...old, chemicalPurpose: value }))
-          }
-        />
-
-        <Input
-          label="Diluição - mL"
-          value={extra.dilutionMl}
-          onChange={(value) =>
-            setExtra((old) => ({ ...old, dilutionMl: value }))
-          }
-          placeholder="Ex.: 50"
-        />
-
-        <Input
-          label="Diluição - litros de água"
-          value={extra.dilutionLiters}
-          onChange={(value) =>
-            setExtra((old) => ({ ...old, dilutionLiters: value }))
-          }
-          placeholder="Ex.: 10"
-        />
-
-        <Input
-          label="Data preparo"
-          type="date"
-          value={extra.preparationDate}
-          onChange={(value) =>
-            setExtra((old) => ({ ...old, preparationDate: value }))
-          }
-        />
-
-        <Input
-          label="Hora preparo"
-          type="time"
-          value={extra.preparationTime}
-          onChange={(value) =>
-            setExtra((old) => ({ ...old, preparationTime: value }))
           }
         />
 
@@ -1063,6 +1245,8 @@ function SpecificFields({
             setExtra((old) => ({ ...old, chemicalValidity: value }))
           }
         />
+
+        <ChemicalDilutionBox extra={extra} setExtra={setExtra} />
       </FieldBox>
     );
   }
@@ -1216,6 +1400,79 @@ function SpecificFields({
   return null;
 }
 
+function ChemicalDilutionBox({
+  extra,
+  setExtra,
+}: {
+  extra: ExtraState;
+  setExtra: Dispatch<SetStateAction<ExtraState>>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="md:col-span-2 overflow-hidden rounded-3xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#151515]">
+      <button
+        type="button"
+        onClick={() => setOpen((old) => !old)}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50 dark:hover:bg-white/5"
+      >
+        <div>
+          <p className="text-sm font-black text-safe-dark dark:text-white">
+            Diluição
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-300">
+            Preencha apenas se o produto químico for diluído.
+          </p>
+        </div>
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green dark:bg-white/10">
+          {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="grid gap-4 border-t border-slate-100 p-4 dark:border-white/10 md:grid-cols-2">
+          <Input
+            label="Diluição - mL"
+            value={extra.dilutionMl}
+            onChange={(value) =>
+              setExtra((old) => ({ ...old, dilutionMl: value }))
+            }
+            placeholder="Ex.: 50"
+          />
+
+          <Input
+            label="Diluição - litros de água"
+            value={extra.dilutionLiters}
+            onChange={(value) =>
+              setExtra((old) => ({ ...old, dilutionLiters: value }))
+            }
+            placeholder="Ex.: 10"
+          />
+
+          <Input
+            label="Data preparo"
+            type="date"
+            value={extra.preparationDate}
+            onChange={(value) =>
+              setExtra((old) => ({ ...old, preparationDate: value }))
+            }
+          />
+
+          <Input
+            label="Hora preparo"
+            type="time"
+            value={extra.preparationTime}
+            onChange={(value) =>
+              setExtra((old) => ({ ...old, preparationTime: value }))
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldBox({
   title,
   children,
@@ -1263,6 +1520,39 @@ function Input({
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition focus:border-safe-green focus:bg-white dark:border-white/10 dark:bg-[#151515] dark:text-white"
       />
+    </div>
+  );
+}
+
+function SelectTextField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+        {label}
+      </label>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition focus:border-safe-green focus:bg-white dark:border-white/10 dark:bg-[#151515] dark:text-white"
+      >
+        <option value="">Selecionar</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -1355,6 +1645,16 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
+}
+
+function formatDatePreview(value?: string) {
+  if (!value) return '-';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return format(date, 'dd/MM/yyyy');
 }
 
 export default NewLabel;

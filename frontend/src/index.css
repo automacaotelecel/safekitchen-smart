@@ -14,9 +14,13 @@
   --safe-yellow: #FFB703;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+}
 
 body {
   margin: 0;
@@ -26,68 +30,300 @@ body {
     radial-gradient(circle at top left, rgba(25, 208, 156, 0.14), transparent 32rem),
     radial-gradient(circle at bottom right, rgba(113, 104, 217, 0.12), transparent 28rem),
     #f6fbfb;
+  color: #0f172a;
 }
 
-button, a { -webkit-tap-highlight-color: transparent; }
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
 
-input, select, textarea { outline: none; }
+input,
+select,
+textarea {
+  outline: none;
+}
 
-.safe-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-.safe-scrollbar::-webkit-scrollbar-thumb { background: rgba(7,59,76,.22); border-radius: 999px; }
-.safe-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.safe-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.safe-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(7, 59, 76, 0.22);
+  border-radius: 999px;
+}
+
+.safe-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 @media print {
-  .no-print { display: none !important; }
-  body { background: white; }
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
 }
 
-/* Tema escuro global: mantém compatibilidade com as telas existentes sem reescrever todos os componentes. */
+/* =========================================================
+   TEMA ESCURO SAFEKITCHEN
+   Pedido da cliente:
+   - só a tela/fundo de trás fica escura
+   - os blocos/cards/formulários da frente continuam claros
+   ========================================================= */
+
 html.dark {
-  background: #151515;
-  color-scheme: dark;
+  background: #071b1d;
+  color-scheme: light;
 }
 
 html.dark body {
   background:
-    radial-gradient(circle at top left, rgba(25, 208, 156, 0.12), transparent 32rem),
-    radial-gradient(circle at bottom right, rgba(113, 104, 217, 0.10), transparent 28rem),
-    #151515;
+    radial-gradient(circle at top left, rgba(25, 208, 156, 0.12), transparent 34rem),
+    radial-gradient(circle at bottom right, rgba(10, 124, 134, 0.12), transparent 30rem),
+    #071b1d;
   color: #f8fafc;
 }
 
-html.dark .bg-white { background-color: #202020 !important; }
-html.dark .bg-white\/85 { background-color: rgba(32, 32, 32, 0.90) !important; }
-html.dark .bg-white\/90 { background-color: rgba(32, 32, 32, 0.95) !important; }
-html.dark .bg-white\/95 { background-color: rgba(32, 32, 32, 0.96) !important; }
-html.dark .bg-slate-50 { background-color: #171717 !important; }
-html.dark .bg-slate-100 { background-color: #2b2b2b !important; }
-html.dark .bg-safe-soft { background-color: #12362f !important; }
-html.dark .bg-purple-50 { background-color: rgba(113, 104, 217, 0.18) !important; }
-html.dark .bg-red-50 { background-color: rgba(127, 29, 29, 0.35) !important; }
-html.dark .bg-yellow-100 { background-color: rgba(133, 77, 14, 0.35) !important; }
-html.dark .bg-red-100 { background-color: rgba(127, 29, 29, 0.38) !important; }
+/* Fundo principal do sistema */
+html.dark .app-content {
+  background: transparent !important;
+  color: #043746;
+}
 
-html.dark .text-safe-dark,
-html.dark .text-slate-900,
-html.dark .text-slate-800,
-html.dark .text-slate-700,
-html.dark .text-slate-600 { color: #f8fafc !important; }
-html.dark .text-slate-500,
-html.dark .text-slate-400 { color: #cbd5e1 !important; }
-html.dark .text-safe-blue { color: #5eead4 !important; }
-html.dark .text-purple-700 { color: #c4b5fd !important; }
-html.dark .text-red-700,
-html.dark .text-red-600,
-html.dark .text-red-800 { color: #fecaca !important; }
-html.dark .text-yellow-800,
-html.dark .text-yellow-900 { color: #fef3c7 !important; }
+/* =========================================================
+   BLOCOS/CARDS CLAROS NO MODO ESCURO
+   Pega os blocos principais das páginas sem afetar a sidebar.
+   ========================================================= */
 
-html.dark .border-slate-200,
-html.dark .border-white\/70,
-html.dark .border-white\/60 { border-color: rgba(255, 255, 255, 0.10) !important; }
-html.dark .shadow-soft { box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28) !important; }
-html.dark .shadow-app { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.38) !important; }
-html.dark input,
-html.dark select,
-html.dark textarea { color: #f8fafc; }
-html.dark option { background: #202020; color: #fff; }
+html.dark .app-content section,
+html.dark .app-content aside,
+html.dark .app-content article,
+html.dark .app-content form,
+html.dark .app-content [class*="rounded-3xl"],
+html.dark .app-content [class*="rounded-[28px]"],
+html.dark .app-content [class*="rounded-[26px]"] {
+  background-color: #ffffff !important;
+  color: #043746 !important;
+  border-color: #dbe4ea !important;
+}
+
+/* Cards internos menores */
+html.dark .app-content [class*="rounded-2xl"]:not(button):not(a):not(input):not(select):not(textarea),
+html.dark .app-content [class*="rounded-xl"]:not(button):not(a):not(input):not(select):not(textarea) {
+  background-color: #ffffff !important;
+  color: #043746 !important;
+  border-color: #dbe4ea !important;
+}
+
+/* Remove fundos escuros vindos das classes dark das páginas */
+html.dark .app-content .bg-white,
+html.dark .app-content .bg-white\/85,
+html.dark .app-content .bg-white\/90,
+html.dark .app-content .bg-white\/95,
+html.dark .app-content .bg-slate-50,
+html.dark .app-content .bg-\[\#202020\],
+html.dark .app-content .bg-\[\#151515\],
+html.dark .app-content .bg-\[\#111827\],
+html.dark .app-content .bg-\[\#0b1719\],
+html.dark .app-content .dark\:bg-\[\#202020\],
+html.dark .app-content .dark\:bg-\[\#151515\],
+html.dark .app-content .dark\:bg-\[\#111827\],
+html.dark .app-content .dark\:bg-\[\#0b1719\],
+html.dark .app-content .dark\:bg-white\/5,
+html.dark .app-content .dark\:bg-white\/10 {
+  background-color: #ffffff !important;
+  color: #043746 !important;
+}
+
+/* =========================================================
+   INPUTS CLAROS NO MODO ESCURO
+   ========================================================= */
+
+html.dark .app-content input,
+html.dark .app-content textarea,
+html.dark .app-content select {
+  background-color: #f8fafc !important;
+  color: #043746 !important;
+  border-color: #dbe4ea !important;
+}
+
+html.dark .app-content input::placeholder,
+html.dark .app-content textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.dark option {
+  background: #ffffff;
+  color: #043746;
+}
+
+/* =========================================================
+   TEXTOS DENTRO DOS BLOCOS CLAROS
+   ========================================================= */
+
+html.dark .app-content .text-safe-dark,
+html.dark .app-content .text-slate-900,
+html.dark .app-content .text-slate-800,
+html.dark .app-content .text-slate-700,
+html.dark .app-content .text-slate-600,
+html.dark .app-content .text-white,
+html.dark .app-content .dark\:text-white {
+  color: #043746 !important;
+}
+
+html.dark .app-content .text-slate-500,
+html.dark .app-content .text-slate-400,
+html.dark .app-content .dark\:text-slate-100,
+html.dark .app-content .dark\:text-slate-200,
+html.dark .app-content .dark\:text-slate-300,
+html.dark .app-content .dark\:text-slate-400 {
+  color: #475569 !important;
+}
+
+html.dark .app-content .text-safe-blue {
+  color: #0A7C86 !important;
+}
+
+html.dark .app-content .text-safe-green {
+  color: #19D09C !important;
+}
+
+html.dark .app-content .text-purple-700 {
+  color: #7168D9 !important;
+}
+
+html.dark .app-content .text-red-700,
+html.dark .app-content .text-red-600,
+html.dark .app-content .text-red-800 {
+  color: #dc2626 !important;
+}
+
+html.dark .app-content .text-yellow-800,
+html.dark .app-content .text-yellow-900 {
+  color: #a16207 !important;
+}
+
+/* Bordas claras nos blocos */
+html.dark .app-content .border-slate-200,
+html.dark .app-content .border-white\/70,
+html.dark .app-content .border-white\/60,
+html.dark .app-content .border-white\/10,
+html.dark .app-content .dark\:border-white\/10 {
+  border-color: #dbe4ea !important;
+}
+
+/* Sombras mais suaves em cima do fundo escuro */
+html.dark .app-content .shadow-soft {
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12) !important;
+}
+
+html.dark .app-content .shadow-app {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16) !important;
+}
+
+/* =========================================================
+   MANTER BOTÕES/BADGES COLORIDOS
+   ========================================================= */
+
+html.dark .app-content button.bg-safe-green,
+html.dark .app-content a.bg-safe-green,
+html.dark .app-content .bg-safe-green {
+  background-color: #19D09C !important;
+  color: #ffffff !important;
+}
+
+html.dark .app-content .bg-emerald-600 {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+html.dark .app-content .bg-emerald-50 {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+html.dark .app-content .bg-emerald-100 {
+  background-color: #d1fae5 !important;
+  color: #047857 !important;
+}
+
+html.dark .app-content .bg-red-50 {
+  background-color: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+html.dark .app-content .bg-red-100 {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+html.dark .app-content .bg-yellow-50 {
+  background-color: #fefce8 !important;
+  color: #a16207 !important;
+}
+
+html.dark .app-content .bg-yellow-100 {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+html.dark .app-content .bg-amber-50 {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+}
+
+html.dark .app-content .bg-amber-100 {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+html.dark .app-content .bg-safe-soft {
+  background-color: #e7fff8 !important;
+  color: #006b73 !important;
+}
+
+html.dark .app-content .bg-purple-50 {
+  background-color: rgba(113, 104, 217, 0.12) !important;
+  color: #5b21b6 !important;
+}
+
+html.dark .app-content .bg-slate-100 {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+html.dark .app-content .bg-slate-200 {
+  background-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+/* Bolinhas de status */
+html.dark .app-content .bg-red-500 {
+  background-color: #ef4444 !important;
+}
+
+html.dark .app-content .bg-amber-500 {
+  background-color: #f59e0b !important;
+}
+
+html.dark .app-content .bg-emerald-500 {
+  background-color: #10b981 !important;
+}
+
+html.dark .app-content .bg-slate-400 {
+  background-color: #94a3b8 !important;
+}
+
+/* =========================================================
+   SIDEBAR CONTINUA ESCURA
+   Como a sidebar fica fora da .app-content, ela não é afetada
+   pelos cards claros.
+   ========================================================= */
+
+html.dark aside:not(.app-content aside) {
+  color: inherit;
+}
