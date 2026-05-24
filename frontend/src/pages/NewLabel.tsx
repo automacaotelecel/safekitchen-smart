@@ -159,7 +159,7 @@ const hiddenProductSearchTypes: LabelType[] = ['AMOSTRAS'];
 
 const hideConservationTypes: LabelType[] = ['PRODUTO_QUIMICO'];
 
-const hideOpenedAtTypes: LabelType[] = ['NAO_CONFORME', 'PRODUTO_QUIMICO'];
+const hideOpenedAtTypes: LabelType[] = ['AMOSTRAS', 'NAO_CONFORME', 'PRODUTO_QUIMICO'];
 
 const openedAtInAdditionalTypes: LabelType[] = ['ARMAZENAMENTO_CARNES'];
 
@@ -271,14 +271,17 @@ export function NewLabel() {
     ) || selectedProduct?.validityRules[0];
 
   const previewExpiration = useMemo(() => {
-    const opened = new Date(form.openedAt);
+    const baseDate =
+      form.type === 'AMOSTRAS'
+        ? new Date(`${extra.collectionDate || now.toISOString().slice(0, 10)}T${extra.collectionTime || '00:00'}`)
+        : new Date(form.openedAt);
 
-    if (Number.isNaN(opened.getTime()) || form.type === 'NAO_CONFORME') {
+    if (Number.isNaN(baseDate.getTime()) || form.type === 'NAO_CONFORME') {
       return null;
     }
 
     if (form.type === 'AMOSTRAS') {
-      return addHours(opened, 72);
+      return addHours(baseDate, 72);
     }
 
     if (form.type === 'PRODUTO_QUIMICO' && extra.chemicalValidity) {
@@ -301,15 +304,15 @@ export function NewLabel() {
 
     if (manual > 0) {
       return form.manualValidityUnit === 'hours'
-        ? addHours(opened, manual)
-        : addDays(opened, manual);
+        ? addHours(baseDate, manual)
+        : addDays(baseDate, manual);
     }
 
     if (!selectedRule) return null;
 
     return selectedRule.validityUnit === 'hours'
-      ? addHours(opened, selectedRule.validityValue)
-      : addDays(opened, selectedRule.validityValue);
+      ? addHours(baseDate, selectedRule.validityValue)
+      : addDays(baseDate, selectedRule.validityValue);
   }, [
     form.openedAt,
     form.manualValidityUnit,
@@ -318,6 +321,8 @@ export function NewLabel() {
     selectedRule,
     extra.chemicalValidity,
     extra.newValidity,
+    extra.collectionDate,
+    extra.collectionTime,
   ]);
 
   function pickProduct(product: Product) {
@@ -354,21 +359,35 @@ export function NewLabel() {
   }
 
   function pickLabelType(type: LabelType) {
-    setForm((old) => ({
-      ...old,
+    const freshNow = new Date();
+    const freshDate = freshNow.toISOString().slice(0, 10);
+    const freshTime = freshNow.toTimeString().slice(0, 5);
+
+    setForm({
+      ...initialForm,
       type,
-      productId: type === 'AMOSTRAS' ? '' : old.productId,
-      productName: type === 'AMOSTRAS' ? '' : old.productName,
-      brand: type === 'AMOSTRAS' ? '' : old.brand,
-      supplier: type === 'AMOSTRAS' ? '' : old.supplier,
-      batch: type === 'AMOSTRAS' ? '' : old.batch,
-    }));
+      conservationMode: type === 'PRODUTO_QUIMICO' ? 'AMBIENTE' : 'REFRIGERADO',
+      openedAt: freshNow.toISOString().slice(0, 16),
+    });
 
-    if (type === 'AMOSTRAS') {
-      setSearch('');
-      setShowProductOptions(false);
-    }
+    setExtra({
+      ...initialExtra,
+      collectionDate: freshDate,
+      collectionTime: freshTime,
+      preparationDate: freshDate,
+      preparationTime: freshTime,
+      identificationDate: freshDate,
+      startDate: freshDate,
+      startTime: freshTime,
+      receiptDate: freshDate,
+      repackagingDate: freshDate,
+    });
 
+    setSearch('');
+    setCreated(null);
+    setError('');
+    setShowAdditionalFields(false);
+    setShowProductOptions(type !== 'AMOSTRAS');
     setShowTypeOptions(false);
   }
 
@@ -456,8 +475,14 @@ export function NewLabel() {
     setLoading(true);
 
     try {
+      const sampleOpenedAt =
+        form.type === 'AMOSTRAS'
+          ? `${extra.collectionDate || new Date().toISOString().slice(0, 10)}T${extra.collectionTime || new Date().toTimeString().slice(0, 5)}`
+          : form.openedAt;
+
       const payload = {
         ...form,
+        openedAt: sampleOpenedAt,
         productId: form.productId || null,
         employeeId: form.employeeId || null,
         brand: form.brand || null,
@@ -610,7 +635,6 @@ export function NewLabel() {
             <ResponsibleFields
               employees={employees}
               form={form}
-              setForm={setForm}
               pickEmployee={pickEmployee}
             />
 
@@ -737,7 +761,7 @@ export function NewLabel() {
                 )}
 
                 <PreviewRow
-                  label="Validade"
+                  label={form.type === 'AMOSTRAS' ? 'Descarte' : 'Validade'}
                   value={
                     previewExpiration
                       ? format(previewExpiration, 'dd/MM/yyyy HH:mm')
@@ -936,48 +960,33 @@ function ProductSearch({
 function ResponsibleFields({
   employees,
   form,
-  setForm,
   pickEmployee,
 }: {
   employees: Employee[];
   form: FormState;
-  setForm: Dispatch<SetStateAction<FormState>>;
   pickEmployee: (employeeId: string) => void;
 }) {
   return (
-    <>
-      <div>
-        <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-          Responsável
-        </label>
+    <div>
+      <label className="text-sm font-black text-slate-700 dark:text-slate-200">
+        Responsável
+      </label>
 
-        <select
-          value={form.employeeId}
-          onChange={(event) => pickEmployee(event.target.value)}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
-        >
-          <option value="">Selecionar funcionário</option>
-
-          {employees.map((employee) => (
-            <option key={employee.id} value={employee.id}>
-              {employee.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <Input
-        label="Nome do responsável"
-        value={form.responsibleName}
-        onChange={(value) =>
-          setForm((old) => ({
-            ...old,
-            responsibleName: value,
-          }))
-        }
+      <select
         required
-      />
-    </>
+        value={form.employeeId}
+        onChange={(event) => pickEmployee(event.target.value)}
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none dark:border-white/10 dark:bg-[#151515] dark:text-white"
+      >
+        <option value="">Selecionar funcionário</option>
+
+        {employees.map((employee) => (
+          <option key={employee.id} value={employee.id}>
+            {employee.name}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

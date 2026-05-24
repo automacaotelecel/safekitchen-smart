@@ -69,8 +69,11 @@ export function Login() {
 
             <div className="relative z-20 mt-12 max-w-xl">
               <h1 className="mt-6 text-4xl font-black leading-[1.05] sm:text-5xl lg:text-6xl">
-                Sua cozinha livre da{' '}
-                <span className="text-[#19F5C7]">caneta.</span>
+                Economize <span className="text-[#19F5C7]">tempo</span>
+                <br />
+                e tenha mais <span className="text-[#19F5C7]">controle</span>
+                <br />
+                na sua cozinha
               </h1>
 
               <p className="mt-6 max-w-md text-lg font-semibold leading-relaxed text-white/85">
