@@ -168,9 +168,12 @@ export function PrintQueue() {
     try {
       const token = getToken();
 
-      await printPdfFromUrl(`${API_URL}/api/labels/${id}/pdf`, {
+      const result = await printPdfFromUrl(`${API_URL}/api/labels/${id}/pdf`, {
         token,
+        fileName: `etiqueta-${id}.pdf`,
       });
+
+      setMessage(result.message);
     } catch (error) {
       console.error(error);
       setMessage(
@@ -195,7 +198,7 @@ export function PrintQueue() {
     try {
       const token = getToken();
 
-      await printPdfFromPost(
+      const result = await printPdfFromPost(
         `${API_URL}/api/labels/batch-pdf`,
         {
           items: selected.map((item) => ({
@@ -205,8 +208,11 @@ export function PrintQueue() {
         },
         {
           token,
+          fileName: 'etiquetas-selecionadas.pdf',
         }
       );
+
+      setMessage(result.message);
     } catch (error) {
       console.error(error);
       setMessage(
@@ -233,7 +239,7 @@ export function PrintQueue() {
             </h1>
 
             <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
-              Selecione etiquetas, defina a quantidade de cópias e envie direto para a tela de impressão.
+              Selecione etiquetas, defina cópias e imprima. No celular, o PDF abre para você tocar em compartilhar/imprimir.
             </p>
           </div>
 
