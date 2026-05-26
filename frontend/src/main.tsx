@@ -15,6 +15,7 @@ import { Products } from './pages/Products';
 import { ProductDetails } from './pages/ProductDetails';
 import { Employees } from './pages/Employees';
 import { PrintQueue } from './pages/PrintQueue';
+import { PrintLabelsPage } from './pages/PrintLabelsPage';
 
 import { registerServiceWorker } from './utils/pwa';
 
@@ -37,6 +38,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="historico" element={<History />} />
           <Route path="gerenciar-etiquetas" element={<LabelManagement />} />
           <Route path="impressao" element={<PrintQueue />} />
+          <Route path="imprimir-etiquetas" element={<PrintLabelsPage />} />
           <Route path="produtos" element={<Products />} />
           <Route path="produtos/:id" element={<ProductDetails />} />
           <Route path="funcionarios" element={<Employees />} />

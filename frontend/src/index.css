@@ -327,3 +327,161 @@ html.dark .app-content .bg-slate-400 {
 html.dark aside:not(.app-content aside) {
   color: inherit;
 }
+/* =========================================================
+   IMPRESSÃO DE ETIQUETAS EM HTML
+   Melhor compatibilidade com celular do que imprimir PDF em iframe.
+   ========================================================= */
+.print-page-screen {
+  min-height: 100vh;
+  background: #f6fbfb;
+  color: #073B4C;
+  padding: 16px;
+}
+
+.print-page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.print-page-help {
+  margin-bottom: 14px;
+  border: 1px solid #dbe4ea;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.print-page-status,
+.print-page-error {
+  border-radius: 18px;
+  padding: 14px;
+  font-weight: 800;
+  background: #ffffff;
+  border: 1px solid #dbe4ea;
+}
+
+.print-page-error {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.print-label-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.print-label-card {
+  width: 100%;
+  min-height: 188px;
+  border: 2px solid #19D09C;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #ffffff;
+  color: #0f172a;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-label-header {
+  background: #0A7C86;
+  color: #ffffff;
+  padding: 10px 12px;
+}
+
+.print-label-header p {
+  margin: 0 0 4px 0;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.print-label-header h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.15;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.print-label-body {
+  padding: 9px 12px 6px;
+}
+
+.print-label-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 4px 0;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+.print-label-row span {
+  color: #475569;
+  font-weight: 800;
+}
+
+.print-label-row strong {
+  color: #0f172a;
+  font-weight: 950;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.print-label-footer {
+  padding: 4px 10px 8px;
+  text-align: center;
+  color: #64748b;
+  font-size: 7px;
+  overflow-wrap: anywhere;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  html,
+  body,
+  #root {
+    background: #ffffff !important;
+  }
+
+  body {
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-page-screen {
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-label-sheet {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8mm 7mm !important;
+  }
+
+  .print-label-card {
+    width: 100% !important;
+    min-height: 46mm !important;
+    border-radius: 3mm !important;
+    box-shadow: none !important;
+  }
+}

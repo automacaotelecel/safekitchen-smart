@@ -10,7 +10,6 @@ import {
 
 import { api, API_URL, getToken } from '../api/client';
 import { formatDateBR, getValidityVisual } from '../utils/validityVisual';
-import { printPdfFromPost, printPdfFromUrl } from '../utils/printPdf';
 
 type LabelItem = {
   id: string;
@@ -54,6 +53,25 @@ function labelTypeText(type?: string) {
 
 function getLabelType(item: LabelItem) {
   return item.type || item.labelType || '';
+}
+
+function createPrintUrl(items: PrintSelection[]) {
+  const query = items
+    .map((item) => `${encodeURIComponent(item.id)}:${item.copies}`)
+    .join(',');
+
+  return `/imprimir-etiquetas?items=${query}`;
+}
+
+function openPrintPage(items: PrintSelection[]) {
+  if (!items.length) return;
+
+  const url = createPrintUrl(items);
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+
+  if (!opened) {
+    window.location.href = url;
+  }
 }
 
 export function PrintQueue() {
@@ -161,68 +179,19 @@ export function PrintQueue() {
     window.open(`${API_URL}/api/labels/${id}/pdf?token=${token || ''}`, '_blank');
   }
 
-  async function printSinglePdf(id: string) {
-    setPrinting(true);
-    setMessage('');
-
-    try {
-      const token = getToken();
-
-      const result = await printPdfFromUrl(`${API_URL}/api/labels/${id}/pdf`, {
-        token,
-        fileName: `etiqueta-${id}.pdf`,
-      });
-
-      setMessage(result.message);
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Não foi possível imprimir a etiqueta.'
-      );
-    } finally {
-      setPrinting(false);
-    }
+  function printSinglePdf(id: string) {
+    setMessage('Abrindo tela de impressão. No celular, toque em “Imprimir agora” se a janela não abrir automaticamente.');
+    openPrintPage([{ id, copies: 1 }]);
   }
 
-  async function printBatchPdf() {
+  function printBatchPdf() {
     if (!selected.length) {
       setMessage('Selecione pelo menos uma etiqueta.');
       return;
     }
 
-    setPrinting(true);
-    setMessage('');
-
-    try {
-      const token = getToken();
-
-      const result = await printPdfFromPost(
-        `${API_URL}/api/labels/batch-pdf`,
-        {
-          items: selected.map((item) => ({
-            id: item.id,
-            copies: item.copies,
-          })),
-        },
-        {
-          token,
-          fileName: 'etiquetas-selecionadas.pdf',
-        }
-      );
-
-      setMessage(result.message);
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Erro ao gerar impressão em lote.'
-      );
-    } finally {
-      setPrinting(false);
-    }
+    setMessage('Abrindo tela de impressão. No celular, toque em “Imprimir agora” se a janela não abrir automaticamente.');
+    openPrintPage(selected);
   }
 
   return (
@@ -239,7 +208,7 @@ export function PrintQueue() {
             </h1>
 
             <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
-              Selecione etiquetas, defina cópias e imprima. No celular, o PDF abre para você tocar em compartilhar/imprimir.
+              Selecione etiquetas, defina a quantidade de cópias e abra uma tela própria de impressão, melhor para computador e celular.
             </p>
           </div>
 
