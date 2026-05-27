@@ -122,11 +122,18 @@ router.get('/dashboard', async (req, res) => {
     const total = labels.length;
     const expired = labels.filter((label) => label.expiresAt && label.expiresAt.getTime() < now.getTime()).length;
     const active = labels.filter((label) => !label.expiresAt || label.expiresAt.getTime() >= now.getTime()).length;
+    const expiringSoon = labels.filter((label) => {
+        if (!label.expiresAt)
+            return false;
+        const diffHours = (label.expiresAt.getTime() - now.getTime()) / 1000 / 60 / 60;
+        return diffHours >= 0 && diffHours <= 24;
+    }).length;
     const noExpiration = labels.filter((label) => !label.expiresAt).length;
     return (0, http_1.ok)(res, {
         total,
         active,
         expired,
+        expiringSoon,
         noExpiration,
         recent: labels.slice(0, 5),
     });
@@ -271,6 +278,7 @@ router.patch('/:id/cancel', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     if (!req.user)
         return (0, http_1.fail)(res, 'Não autenticado.', 401);
+    const permanent = String(req.query.permanent || '') === '1';
     const label = await prisma_1.prisma.label.findFirst({
         where: {
             id: req.params.id,
@@ -279,6 +287,18 @@ router.delete('/:id', async (req, res) => {
     });
     if (!label)
         return (0, http_1.fail)(res, 'Etiqueta não encontrada.', 404);
+    if (permanent) {
+        await prisma_1.prisma.label.delete({
+            where: {
+                id: label.id,
+            },
+        });
+        return (0, http_1.ok)(res, {
+            deleted: true,
+            canceled: false,
+            message: 'Etiqueta excluída definitivamente.',
+        });
+    }
     const updated = await prisma_1.prisma.label.update({
         where: {
             id: label.id,
@@ -293,7 +313,7 @@ router.delete('/:id', async (req, res) => {
     return (0, http_1.ok)(res, {
         deleted: false,
         canceled: true,
-        message: 'Etiqueta cancelada para preservar rastreabilidade.',
+        message: 'Etiqueta cancelada e removida da lista principal.',
         label: updated,
     });
 });

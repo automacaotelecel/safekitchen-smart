@@ -9,6 +9,8 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import { useSearchParams } from 'react-router-dom';
+
 import { api, API_URL, getToken } from '../api/client';
 import type { Label } from '../types';
 import { formatDateBR, getValidityVisual } from '../utils/validityVisual';
@@ -31,10 +33,13 @@ function labelTypeName(type?: string) {
 type StatusFilter = 'TODAS' | 'VALIDAS' | 'VENCENDO' | 'VENCIDAS' | 'CANCELADAS';
 
 export function History() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [labels, setLabels] = useState<Label[]>([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('TODAS');
-  const [includeCanceled, setIncludeCanceled] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    (searchParams.get('status') as StatusFilter) || 'TODAS'
+  );
+  const [includeCanceled, setIncludeCanceled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -56,6 +61,21 @@ export function History() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const status = searchParams.get('status') as StatusFilter | null;
+
+    if (
+      status &&
+      ['TODAS', 'VALIDAS', 'VENCENDO', 'VENCIDAS', 'CANCELADAS'].includes(status)
+    ) {
+      setStatusFilter(status);
+
+      if (status === 'CANCELADAS') {
+        setIncludeCanceled(true);
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadLabels();
@@ -91,7 +111,7 @@ export function History() {
 
   async function cancelLabel(label: Label) {
     const confirmed = window.confirm(
-      `Deseja cancelar/remover a etiqueta de "${label.productName}"?\n\nEla ficará como CANCELADA no histórico para manter a rastreabilidade.`
+      `Deseja cancelar a etiqueta de "${label.productName}"?\n\nEla sairá da lista principal. Você ainda pode visualizar etiquetas canceladas ativando o filtro.`
     );
 
     if (!confirmed) return;
@@ -103,10 +123,31 @@ export function History() {
         method: 'DELETE',
       });
 
-      setMessage('Etiqueta cancelada com sucesso.');
+      setMessage('Etiqueta cancelada e removida da lista principal.');
       await loadLabels();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Erro ao cancelar etiqueta.');
+    }
+  }
+
+  async function deleteLabel(label: Label) {
+    const confirmed = window.confirm(
+      `Deseja excluir definitivamente a etiqueta de "${label.productName}"?\n\nEssa ação remove a etiqueta do histórico.`
+    );
+
+    if (!confirmed) return;
+
+    setMessage('');
+
+    try {
+      await api(`/api/labels/${label.id}?permanent=1`, {
+        method: 'DELETE',
+      });
+
+      setMessage('Etiqueta excluída definitivamente.');
+      await loadLabels();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao excluir etiqueta.');
     }
   }
 
@@ -151,7 +192,21 @@ export function History() {
 
         <select
           value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+          onChange={(event) => {
+            const nextStatus = event.target.value as StatusFilter;
+
+            setStatusFilter(nextStatus);
+
+            if (nextStatus === 'TODAS') {
+              setSearchParams({});
+            } else {
+              setSearchParams({ status: nextStatus });
+            }
+
+            if (nextStatus === 'CANCELADAS') {
+              setIncludeCanceled(true);
+            }
+          }}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-safe-dark shadow-sm outline-none dark:border-white/10 dark:bg-[#202020] dark:text-white"
         >
           <option value="TODAS">Todas</option>
@@ -170,7 +225,7 @@ export function History() {
               : 'bg-white text-slate-600 dark:bg-[#202020] dark:text-slate-200'
           }`}
         >
-          {includeCanceled ? 'Mostrando canceladas' : 'Ocultar canceladas'}
+          {includeCanceled ? 'Ocultar canceladas' : 'Mostrar canceladas'}
         </button>
       </div>
 
@@ -193,7 +248,28 @@ export function History() {
           filteredLabels.map((label) => {
             const visual = getValidityVisual(label.expiresAt, label.status);
 
-            return (
+            async function deleteLabel(label: Label) {
+    const confirmed = window.confirm(
+      `Deseja excluir definitivamente a etiqueta de "${label.productName}"?\n\nEssa ação remove a etiqueta do histórico.`
+    );
+
+    if (!confirmed) return;
+
+    setMessage('');
+
+    try {
+      await api(`/api/labels/${label.id}?permanent=1`, {
+        method: 'DELETE',
+      });
+
+      setMessage('Etiqueta excluída definitivamente.');
+      await loadLabels();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Erro ao excluir etiqueta.');
+    }
+  }
+
+  return (
               <div
                 key={label.id}
                 className={`rounded-3xl border p-5 shadow-sm transition ${visual.cardClass}`}
@@ -264,10 +340,21 @@ export function History() {
                     )}
 
                     {label.status === 'CANCELADA' && (
-                      <span className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-500 dark:bg-white/10 dark:text-slate-300">
-                        <Ban size={16} />
-                        Cancelada
-                      </span>
+                      <>
+                        <span className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                          <Ban size={16} />
+                          Cancelada
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteLabel(label)}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-2 text-sm font-black text-red-600 transition hover:bg-red-100"
+                        >
+                          <Trash2 size={16} />
+                          Excluir
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

@@ -124,6 +124,29 @@ const initialExtra: ExtraState = {
   newValidity: '',
 };
 
+
+function todayInputDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nowInputTime() {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+function buildLocalDateTime(dateValue?: string, timeValue?: string) {
+  const date = dateValue || todayInputDate();
+  const time = timeValue || '00:00';
+
+  return `${date}T${time}`;
+}
+
+function dateToInputDate(value?: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return '';
+
+  return value.toISOString().slice(0, 10);
+}
+
+
 const nonConformityOptions = [
   'Vencido',
   'Temperatura inadequada',
@@ -159,7 +182,13 @@ const hiddenProductSearchTypes: LabelType[] = ['AMOSTRAS'];
 
 const hideConservationTypes: LabelType[] = ['PRODUTO_QUIMICO'];
 
-const hideOpenedAtTypes: LabelType[] = ['AMOSTRAS', 'NAO_CONFORME', 'PRODUTO_QUIMICO'];
+const hideOpenedAtTypes: LabelType[] = [
+  'AMOSTRAS',
+  'DESCONGELAMENTO_DESSALGUE',
+  'REEMBALAGEM',
+  'NAO_CONFORME',
+  'PRODUTO_QUIMICO',
+];
 
 const openedAtInAdditionalTypes: LabelType[] = ['ARMAZENAMENTO_CARNES'];
 
@@ -251,7 +280,7 @@ export function NewLabel() {
     const activeProducts = products.filter((product) => product.active !== false);
 
     if (!q) {
-      return activeProducts.slice(0, 10);
+      return activeProducts.slice(0, 20);
     }
 
     return activeProducts
@@ -273,8 +302,12 @@ export function NewLabel() {
   const previewExpiration = useMemo(() => {
     const baseDate =
       form.type === 'AMOSTRAS'
-        ? new Date(`${extra.collectionDate || now.toISOString().slice(0, 10)}T${extra.collectionTime || '00:00'}`)
-        : new Date(form.openedAt);
+        ? new Date(buildLocalDateTime(extra.collectionDate, extra.collectionTime))
+        : form.type === 'DESCONGELAMENTO_DESSALGUE'
+          ? new Date(buildLocalDateTime(extra.startDate, extra.startTime))
+          : form.type === 'REEMBALAGEM'
+            ? new Date(buildLocalDateTime(extra.repackagingDate, '00:00'))
+            : new Date(form.openedAt);
 
     if (Number.isNaN(baseDate.getTime()) || form.type === 'NAO_CONFORME') {
       return null;
@@ -323,6 +356,9 @@ export function NewLabel() {
     extra.newValidity,
     extra.collectionDate,
     extra.collectionTime,
+    extra.startDate,
+    extra.startTime,
+    extra.repackagingDate,
   ]);
 
   function pickProduct(product: Product) {
@@ -460,7 +496,7 @@ export function NewLabel() {
       return {
         repackagingDate: extra.repackagingDate,
         originalValidity: extra.originalValidity,
-        newValidity: extra.newValidity,
+        newValidity: extra.newValidity || dateToInputDate(previewExpiration),
       };
     }
 
@@ -475,14 +511,18 @@ export function NewLabel() {
     setLoading(true);
 
     try {
-      const sampleOpenedAt =
+      const baseLabelOpenedAt =
         form.type === 'AMOSTRAS'
-          ? `${extra.collectionDate || new Date().toISOString().slice(0, 10)}T${extra.collectionTime || new Date().toTimeString().slice(0, 5)}`
-          : form.openedAt;
+          ? buildLocalDateTime(extra.collectionDate, extra.collectionTime)
+          : form.type === 'DESCONGELAMENTO_DESSALGUE'
+            ? buildLocalDateTime(extra.startDate, extra.startTime)
+            : form.type === 'REEMBALAGEM'
+              ? buildLocalDateTime(extra.repackagingDate, '00:00')
+              : form.openedAt;
 
       const payload = {
         ...form,
-        openedAt: sampleOpenedAt,
+        openedAt: baseLabelOpenedAt,
         productId: form.productId || null,
         employeeId: form.employeeId || null,
         brand: form.brand || null,
@@ -753,6 +793,29 @@ export function NewLabel() {
                   </>
                 )}
 
+                {form.type === 'DESCONGELAMENTO_DESSALGUE' && (
+                  <>
+                    <PreviewRow
+                      label="Início"
+                      value={`${formatDatePreview(extra.startDate)} ${extra.startTime || ''}`}
+                    />
+                    <PreviewRow label="Método" value={extra.thawingMethod || '-'} />
+                  </>
+                )}
+
+                {form.type === 'REEMBALAGEM' && (
+                  <>
+                    <PreviewRow
+                      label="Data reembalagem"
+                      value={formatDatePreview(extra.repackagingDate)}
+                    />
+                    <PreviewRow
+                      label="Validade original"
+                      value={formatDatePreview(extra.originalValidity)}
+                    />
+                  </>
+                )}
+
                 {form.type === 'PRODUTO_QUIMICO' && (
                   <>
                     <PreviewRow label="Finalidade" value={extra.chemicalPurpose || '-'} />
@@ -761,7 +824,7 @@ export function NewLabel() {
                 )}
 
                 <PreviewRow
-                  label={form.type === 'AMOSTRAS' ? 'Descarte' : 'Validade'}
+                  label={form.type === 'AMOSTRAS' ? 'Descarte' : form.type === 'REEMBALAGEM' ? 'Nova validade' : 'Validade'}
                   value={
                     previewExpiration
                       ? format(previewExpiration, 'dd/MM/yyyy HH:mm')
@@ -1395,12 +1458,13 @@ function SpecificFields({
         />
 
         <Input
-          label="Nova validade"
+          label="Nova validade manual"
           type="date"
           value={extra.newValidity}
           onChange={(value) =>
             setExtra((old) => ({ ...old, newValidity: value }))
           }
+          placeholder="Deixe em branco para calcular automaticamente"
         />
       </FieldBox>
     );

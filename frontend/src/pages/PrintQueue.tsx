@@ -2,14 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CheckSquare,
   FileText,
-  Printer,
   RefreshCcw,
   Search,
+  Share2,
   Square,
 } from 'lucide-react';
 
 import { api, API_URL, getToken } from '../api/client';
 import { formatDateBR, getValidityVisual } from '../utils/validityVisual';
+import {
+  getMobilePrintHelpText,
+  shareOrOpenPdfFromPost,
+  shareOrOpenPdfFromUrl,
+} from '../utils/printPdf';
 
 type LabelItem = {
   id: string;
@@ -55,23 +60,13 @@ function getLabelType(item: LabelItem) {
   return item.type || item.labelType || '';
 }
 
-function createPrintUrl(items: PrintSelection[]) {
-  const query = items
-    .map((item) => `${encodeURIComponent(item.id)}:${item.copies}`)
-    .join(',');
-
-  return `/imprimir-etiquetas?items=${query}`;
-}
-
-function openPrintPage(items: PrintSelection[]) {
-  if (!items.length) return;
-
-  const url = createPrintUrl(items);
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-
-  if (!opened) {
-    window.location.href = url;
-  }
+function slugText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
 }
 
 export function PrintQueue() {
@@ -79,7 +74,7 @@ export function PrintQueue() {
   const [selected, setSelected] = useState<PrintSelection[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [printing, setPrinting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [message, setMessage] = useState('');
 
   async function loadItems() {
@@ -166,7 +161,10 @@ export function PrintQueue() {
 
       filteredItems.forEach((item) => {
         if (!next.some((selectedItem) => selectedItem.id === item.id)) {
-          next.push({ id: item.id, copies: 1 });
+          next.push({
+            id: item.id,
+            copies: 1,
+          });
         }
       });
 
@@ -179,19 +177,73 @@ export function PrintQueue() {
     window.open(`${API_URL}/api/labels/${id}/pdf?token=${token || ''}`, '_blank');
   }
 
-  function printSinglePdf(id: string) {
-    setMessage('Abrindo tela de impressão. No celular, toque em “Imprimir agora” se a janela não abrir automaticamente.');
-    openPrintPage([{ id, copies: 1 }]);
+  async function shareSinglePdf(item: LabelItem) {
+    setSharing(true);
+    setMessage('');
+
+    try {
+      const token = getToken();
+      const fileName = `etiqueta-${slugText(item.productName || 'produto')}.pdf`;
+
+      const result = await shareOrOpenPdfFromUrl(`${API_URL}/api/labels/${item.id}/pdf`, {
+        token,
+        fileName,
+        title: `Etiqueta - ${item.productName}`,
+        text: `Etiqueta SafeKitchen de ${item.productName}.`,
+      });
+
+      setMessage(result.message);
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível compartilhar ou abrir a etiqueta.'
+      );
+    } finally {
+      setSharing(false);
+    }
   }
 
-  function printBatchPdf() {
+  async function shareBatchPdf() {
     if (!selected.length) {
       setMessage('Selecione pelo menos uma etiqueta.');
       return;
     }
 
-    setMessage('Abrindo tela de impressão. No celular, toque em “Imprimir agora” se a janela não abrir automaticamente.');
-    openPrintPage(selected);
+    setSharing(true);
+    setMessage('');
+
+    try {
+      const token = getToken();
+
+      const result = await shareOrOpenPdfFromPost(
+        `${API_URL}/api/labels/batch-pdf`,
+        {
+          items: selected.map((item) => ({
+            id: item.id,
+            copies: item.copies,
+          })),
+        },
+        {
+          token,
+          fileName: 'etiquetas-safekitchen.pdf',
+          title: 'Etiquetas SafeKitchen',
+          text: 'Etiquetas geradas pelo SafeKitchen Smart.',
+        }
+      );
+
+      setMessage(result.message);
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao gerar etiquetas para compartilhar/imprimir.'
+      );
+    } finally {
+      setSharing(false);
+    }
   }
 
   return (
@@ -208,7 +260,8 @@ export function PrintQueue() {
             </h1>
 
             <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
-              Selecione etiquetas, defina a quantidade de cópias e abra uma tela própria de impressão, melhor para computador e celular.
+              Selecione etiquetas, defina a quantidade de cópias e use o botão
+              compartilhar/imprimir para enviar pelo celular ou abrir no computador.
             </p>
           </div>
 
@@ -224,14 +277,20 @@ export function PrintQueue() {
 
             <button
               type="button"
-              onClick={printBatchPdf}
-              disabled={!selected.length || printing}
+              onClick={shareBatchPdf}
+              disabled={!selected.length || sharing}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Printer size={16} />
-              {printing ? 'Preparando...' : `Imprimir seleção (${selected.length})`}
+              <Share2 size={16} />
+              {sharing
+                ? 'Preparando...'
+                : `Compartilhar / imprimir (${selected.length})`}
             </button>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl bg-safe-soft px-4 py-3 text-xs font-bold leading-5 text-safe-dark">
+          {getMobilePrintHelpText()}
         </div>
 
         <div className="relative mt-5">
@@ -358,12 +417,12 @@ export function PrintQueue() {
 
                       <button
                         type="button"
-                        onClick={() => printSinglePdf(item.id)}
-                        disabled={printing}
+                        onClick={() => shareSinglePdf(item)}
+                        disabled={sharing}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-2 text-sm font-bold text-white transition hover:brightness-105 disabled:opacity-50"
                       >
-                        <Printer size={16} />
-                        Imprimir
+                        <Share2 size={16} />
+                        Compartilhar / imprimir
                       </button>
                     </div>
                   </div>

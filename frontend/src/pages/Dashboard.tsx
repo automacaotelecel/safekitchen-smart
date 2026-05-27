@@ -24,6 +24,7 @@ type DashboardState = {
   total: number;
   active: number;
   expired: number;
+  expiringSoon: number;
   noExpiration: number;
   recent: DashboardLabel[];
 };
@@ -32,6 +33,7 @@ const emptyDashboard: DashboardState = {
   total: 0,
   active: 0,
   expired: 0,
+  expiringSoon: 0,
   noExpiration: 0,
   recent: [],
 };
@@ -43,6 +45,13 @@ function normalizeDashboardResponse(response: unknown): DashboardState {
     total: Number(data?.total ?? data?.stats?.total ?? 0),
     active: Number(data?.active ?? data?.stats?.active ?? 0),
     expired: Number(data?.expired ?? data?.stats?.expired ?? 0),
+    expiringSoon: Number(
+      data?.expiringSoon ??
+        data?.soon ??
+        data?.stats?.expiringSoon ??
+        data?.stats?.soon ??
+        0
+    ),
     noExpiration: Number(data?.noExpiration ?? data?.noExpiry ?? data?.stats?.noExpiry ?? 0),
     recent: Array.isArray(data?.recent)
       ? data.recent
@@ -104,24 +113,28 @@ export function Dashboard() {
         value: dashboard.total,
         description: 'Total gerado',
         icon: ClipboardList,
+        to: '/historico',
       },
       {
         label: 'Ativas',
         value: dashboard.active,
         description: 'Dentro da validade',
         icon: ShieldCheck,
+        to: '/historico?status=VALIDAS',
       },
       {
         label: 'Vencidas',
         value: dashboard.expired,
-        description: 'Precisam de atenção',
+        description: 'Clique para revisar',
         icon: AlertTriangle,
+        to: '/historico?status=VENCIDAS',
       },
       {
-        label: 'Sem validade',
-        value: dashboard.noExpiration,
-        description: 'Itens sem vencimento',
+        label: 'A vencer',
+        value: dashboard.expiringSoon,
+        description: 'Clique para revisar',
         icon: Clock3,
+        to: '/historico?status=VENCENDO',
       },
     ],
     [dashboard]
@@ -170,9 +183,10 @@ export function Dashboard() {
           const Icon = card.icon;
 
           return (
-            <div
+            <Link
               key={card.label}
-              className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020]"
+              to={card.to}
+              className="block rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-app dark:border-white/10 dark:bg-[#202020]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -193,7 +207,7 @@ export function Dashboard() {
               <p className="mt-4 text-sm font-medium text-slate-500 dark:text-slate-300">
                 {card.description}
               </p>
-            </div>
+            </Link>
           );
         })}
       </section>

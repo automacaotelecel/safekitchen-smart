@@ -121,12 +121,21 @@ router.get('/dashboard', async (req, res) => {
     (label) => !label.expiresAt || label.expiresAt.getTime() >= now.getTime()
   ).length;
 
+  const expiringSoon = labels.filter((label) => {
+    if (!label.expiresAt) return false;
+
+    const diffHours = (label.expiresAt.getTime() - now.getTime()) / 1000 / 60 / 60;
+
+    return diffHours >= 0 && diffHours <= 24;
+  }).length;
+
   const noExpiration = labels.filter((label) => !label.expiresAt).length;
 
   return ok(res, {
     total,
     active,
     expired,
+    expiringSoon,
     noExpiration,
     recent: labels.slice(0, 5),
   });
@@ -304,6 +313,8 @@ router.patch('/:id/cancel', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
+  const permanent = String(req.query.permanent || '') === '1';
+
   const label = await prisma.label.findFirst({
     where: {
       id: req.params.id,
@@ -312,6 +323,20 @@ router.delete('/:id', async (req, res) => {
   });
 
   if (!label) return fail(res, 'Etiqueta não encontrada.', 404);
+
+  if (permanent) {
+    await prisma.label.delete({
+      where: {
+        id: label.id,
+      },
+    });
+
+    return ok(res, {
+      deleted: true,
+      canceled: false,
+      message: 'Etiqueta excluída definitivamente.',
+    });
+  }
 
   const updated = await prisma.label.update({
     where: {
@@ -328,7 +353,7 @@ router.delete('/:id', async (req, res) => {
   return ok(res, {
     deleted: false,
     canceled: true,
-    message: 'Etiqueta cancelada para preservar rastreabilidade.',
+    message: 'Etiqueta cancelada e removida da lista principal.',
     label: updated,
   });
 });

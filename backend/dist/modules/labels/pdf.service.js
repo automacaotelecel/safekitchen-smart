@@ -160,8 +160,22 @@ function drawLabel(doc, label, x, y) {
         rowY += 10.5;
     }
     row('Conservação', conservationName(label.conservationMode));
-    row('Aberto/manip.', brDateTime(label.openedAt));
-    row('Validade', brDateTime(label.expiresAt));
+    if (label.type === 'AMOSTRAS') {
+        row('Coleta', brDateTime(label.openedAt));
+        row('Descarte', brDateTime(label.expiresAt));
+    }
+    else if (label.type === 'REEMBALAGEM') {
+        row('Reembalagem', brDateTime(label.openedAt));
+        row('Nova validade', brDateTime(label.expiresAt));
+    }
+    else if (label.type === 'DESCONGELAMENTO_DESSALGUE') {
+        row('Início', brDateTime(label.openedAt));
+        row('Validade', brDateTime(label.expiresAt));
+    }
+    else {
+        row('Aberto/manip.', brDateTime(label.openedAt));
+        row('Validade', brDateTime(label.expiresAt));
+    }
     row('Responsável', label.responsibleName || '—');
     row('Lote', label.batch || '—');
     if (label.quantity)
