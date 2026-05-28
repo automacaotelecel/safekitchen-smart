@@ -13,25 +13,51 @@ const employees_routes_1 = __importDefault(require("./modules/employees/employee
 const validity_routes_1 = __importDefault(require("./modules/validity/validity.routes"));
 const vision_routes_1 = __importDefault(require("./modules/vision/vision.routes"));
 const app = (0, express_1.default)();
+function normalizeOrigin(origin) {
+    return origin.trim().replace(/\/$/, '');
+}
+const frontendUrlsFromEnv = (env_1.env.frontendUrl || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
-    env_1.env.frontendUrl,
-].filter((origin) => Boolean(origin));
+    'https://safekitchen.vercel.app',
+    'https://safekitchensmart.com.br',
+    'https://www.safekitchensmart.com.br',
+    ...frontendUrlsFromEnv,
+]
+    .map(normalizeOrigin)
+    .filter((origin, index, array) => origin && array.indexOf(origin) === index);
 app.use((0, cors_1.default)({
     origin(origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin) {
             callback(null, true);
             return;
         }
+        const normalizedOrigin = normalizeOrigin(origin);
+        if (allowedOrigins.includes(normalizedOrigin)) {
+            callback(null, true);
+            return;
+        }
+        console.warn(`Origem não permitida pelo CORS: ${origin}`);
         callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+    ],
+    optionsSuccessStatus: 204,
 }));
+app.options('*', (0, cors_1.default)());
 app.use(express_1.default.json({ limit: '12mb' }));
 app.get('/health', (_req, res) => {
     res.json({

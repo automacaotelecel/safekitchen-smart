@@ -12,29 +12,60 @@ import visionRoutes from './modules/vision/vision.routes';
 
 const app = express();
 
+function normalizeOrigin(origin: string) {
+  return origin.trim().replace(/\/$/, '');
+}
+
+const frontendUrlsFromEnv = (env.frontendUrl || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
-  env.frontendUrl,
-].filter((origin): origin is string => Boolean(origin));
+  'https://safekitchen.vercel.app',
+  'https://safekitchensmart.com.br',
+  'https://www.safekitchensmart.com.br',
+  ...frontendUrlsFromEnv,
+]
+  .map(normalizeOrigin)
+  .filter((origin, index, array) => origin && array.indexOf(origin) === index);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) {
         callback(null, true);
         return;
       }
 
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      if (allowedOrigins.includes(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      console.warn(`Origem não permitida pelo CORS: ${origin}`);
       callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+    ],
+    optionsSuccessStatus: 204,
   })
 );
+
+app.options('*', cors());
 
 app.use(express.json({ limit: '12mb' }));
 
@@ -66,7 +97,9 @@ app.use((_req, res) => {
 app.listen(env.port, () => {
   console.log(`SafeKitchen Smart API rodando em http://localhost:${env.port}`);
   console.log('CORS liberado para:');
+
   allowedOrigins.forEach((origin) => console.log(`- ${origin}`));
+
   console.log(`IA Gemini: ${env.geminiApiKey ? 'configurada' : 'não configurada'}`);
   console.log(`Modelo Gemini: ${env.geminiModel}`);
 });
