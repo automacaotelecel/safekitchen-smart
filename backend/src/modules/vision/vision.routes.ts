@@ -35,8 +35,22 @@ type GeminiSuggestion = {
   notes: string;
 };
 
+const allowedMimeTypes = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+
+function normalizeMimeType(mimeType: string) {
+  const value = String(mimeType || 'image/jpeg').toLowerCase().trim();
+  return allowedMimeTypes.has(value) ? value : 'image/jpeg';
+}
+
 function cleanBase64(imageBase64: string) {
-  return imageBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
+  return imageBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '').trim();
 }
 
 function text(value: unknown) {
@@ -53,7 +67,7 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
   const lastBrace = cleaned.lastIndexOf('}');
 
   if (firstBrace === -1 || lastBrace === -1) {
-    throw new Error('A IA não retornou um JSON válido.');
+    throw new Error('A IA respondeu, mas não retornou um JSON válido. Tente outra foto mais nítida.');
   }
 
   const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
@@ -91,7 +105,9 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
     labelType,
     keywords: text(parsed.keywords),
     confidence,
-    notes: text(parsed.notes),
+    notes:
+      text(parsed.notes) ||
+      'Confira nome, marca, lote e validade antes de salvar. A IA é apenas apoio operacional.',
   };
 }
 
@@ -117,20 +133,14 @@ function scoreProduct(
   const terms = Array.from(new Set(aiText.split(/\s+/).filter((term) => term.length >= 3)));
 
   for (const term of terms) {
-    if (productText.includes(term)) {
-      score += 1;
-    }
+    if (productText.includes(term)) score += 1;
   }
 
   const productName = normalizeText(suggestion.productName);
 
-  if (productName && productText.includes(productName)) {
-    score += 6;
-  }
+  if (productName && productText.includes(productName)) score += 6;
 
-  if (suggestion.brand && productText.includes(normalizeText(suggestion.brand))) {
-    score += 2;
-  }
+  if (suggestion.brand && productText.includes(normalizeText(suggestion.brand))) score += 2;
 
   return score;
 }
@@ -153,28 +163,17 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
   });
 
   const ranked = products
-    .map((product) => ({
-      product,
-      score: scoreProduct(product, suggestion),
-    }))
+    .map((product) => ({ product, score: scoreProduct(product, suggestion) }))
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
 
-  if (!best || best.score < 2) {
-    return null;
-  }
+  if (!best || best.score < 2) return null;
 
   return best.product;
 }
 
-async function askGemini(imageBase64: string, mimeType: string) {
-  if (!env.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY não configurada no .env do backend.');
-  }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent?key=${env.geminiApiKey}`;
-
+function buildGeminiRequestBody(imageBase64: string, mimeType: string) {
   const prompt = `
 Você é uma IA de apoio para um sistema de etiquetas sanitárias de cozinha profissional chamado SafeKitchen Smart.
 
@@ -204,52 +203,81 @@ Regras:
 - Não gere etiqueta. Apenas sugira preenchimento.
 `;
 
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: cleanBase64(imageBase64),
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.15,
+      topP: 0.8,
+      topK: 40,
+      maxOutputTokens: 900,
+      responseMimeType: 'application/json',
+    },
+  };
+}
+
+async function askGemini(imageBase64: string, mimeType: string) {
+  if (!env.geminiApiKey) {
+    throw new Error('GEMINI_API_KEY não configurada no backend/Render. Configure a variável e faça redeploy.');
+  }
+
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent?key=${env.geminiApiKey}`;
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: prompt,
-            },
-            {
-              inlineData: {
-                mimeType,
-                data: cleanBase64(imageBase64),
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.15,
-        topP: 0.8,
-        topK: 40,
-        maxOutputTokens: 900,
-        responseMimeType: 'application/json',
-      },
-    }),
+    body: JSON.stringify(buildGeminiRequestBody(imageBase64, normalizedMimeType)),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error?.message || 'Erro ao consultar IA de visão.');
+    const googleMessage =
+      data?.error?.message ||
+      data?.error?.status ||
+      `HTTP ${response.status} ao consultar a IA.`;
+
+    throw new Error(
+      `Erro ao consultar Gemini: ${googleMessage}. Verifique GEMINI_API_KEY, GEMINI_MODEL e se a API Generative Language está habilitada.`
+    );
   }
 
-  const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const responseText = data?.candidates?.[0]?.content?.parts
+    ?.map((part: { text?: string }) => part.text || '')
+    .join('\n')
+    .trim();
 
   if (!responseText) {
-    throw new Error('A IA não retornou conteúdo para a imagem.');
+    throw new Error('A IA não retornou conteúdo para a imagem. Tente uma foto mais nítida e bem iluminada.');
   }
 
   return safeJsonParse(responseText);
 }
+
+router.get('/health', (_req, res) => {
+  return ok(res, {
+    enabled: Boolean(env.geminiApiKey),
+    model: env.geminiModel,
+    message: env.geminiApiKey
+      ? 'IA configurada no backend.'
+      : 'GEMINI_API_KEY não configurada no backend.',
+  });
+});
 
 router.post('/identify-product', async (req, res) => {
   try {

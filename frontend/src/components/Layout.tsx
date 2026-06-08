@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Sparkles,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -23,6 +24,7 @@ const links = [
   { to: '/nova-etiqueta', label: 'Nova etiqueta', icon: Tags },
   { to: '/historico', label: 'Histórico', icon: ClipboardList },
   { to: '/impressao', label: 'Impressão', icon: Printer },
+  { to: '/ia', label: 'IA', icon: Sparkles },
   { to: '/produtos', label: 'Produtos', icon: PackagePlus },
   { to: '/funcionarios', label: 'Funcionários', icon: Users },
 ];

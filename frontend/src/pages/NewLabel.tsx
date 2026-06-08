@@ -7,12 +7,14 @@ import {
   ChevronUp,
   Printer,
   Search,
+  Share2,
   Sparkles,
   X,
 } from 'lucide-react';
 import { addDays, addHours, format } from 'date-fns';
 
 import { api, API_URL, getToken } from '../api/client';
+import { shareOrOpenPdfFromUrl } from '../utils/printPdf';
 import type {
   ConservationMode,
   Employee,
@@ -222,6 +224,7 @@ export function NewLabel() {
   const [created, setCreated] = useState<Label | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sharingPdf, setSharingPdf] = useState(false);
 
   const [showTypeOptions, setShowTypeOptions] = useState(false);
   const [showProductOptions, setShowProductOptions] = useState(false);
@@ -557,6 +560,29 @@ export function NewLabel() {
     window.open(`${API_URL}/api/labels/${id}/pdf?token=${token || ''}`, '_blank');
   }
 
+  async function sharePdf(label: Label) {
+    setSharingPdf(true);
+    setError('');
+
+    try {
+      const token = getToken();
+      const result = await shareOrOpenPdfFromUrl(`${API_URL}/api/labels/${label.id}/pdf`, {
+        token,
+        fileName: `etiqueta-${label.productName || 'produto'}.pdf`,
+        title: `Etiqueta - ${label.productName}`,
+        text: `Etiqueta SafeKitchen de ${label.productName}.`,
+      });
+
+      if (result.mode !== 'cancelled') {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível compartilhar/imprimir a etiqueta.');
+    } finally {
+      setSharingPdf(false);
+    }
+  }
+
   return (
     <div>
       <div>
@@ -861,13 +887,23 @@ export function NewLabel() {
               </p>
 
               <p className="mt-1 text-sm text-emerald-700">
-                Agora você pode abrir o PDF para imprimir ou consultar no histórico.
+                Agora você pode compartilhar com a impressora do celular ou abrir o PDF.
               </p>
 
               <button
                 type="button"
+                onClick={() => sharePdf(created)}
+                disabled={sharingPdf}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60"
+              >
+                <Share2 size={18} />
+                {sharingPdf ? 'Preparando...' : 'Compartilhar / imprimir'}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => openPdf(created.id)}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-black text-emerald-700"
               >
                 <Printer size={18} />
                 Abrir PDF

@@ -3,15 +3,16 @@ import {
   Ban,
   CalendarDays,
   FileText,
-  Printer,
   RefreshCcw,
   Search,
+  Share2,
   Trash2,
 } from 'lucide-react';
 
 import { useSearchParams } from 'react-router-dom';
 
 import { api, API_URL, getToken } from '../api/client';
+import { shareOrOpenPdfFromUrl } from '../utils/printPdf';
 import type { Label } from '../types';
 import { formatDateBR, getValidityVisual } from '../utils/validityVisual';
 
@@ -42,6 +43,7 @@ export function History() {
   const [includeCanceled, setIncludeCanceled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   async function loadLabels() {
     setLoading(true);
@@ -107,6 +109,27 @@ export function History() {
   function openPdf(label: Label) {
     const token = getToken();
     window.open(`${API_URL}/api/labels/${label.id}/pdf?token=${token || ''}`, '_blank');
+  }
+
+  async function sharePdf(label: Label) {
+    setSharingId(label.id);
+    setMessage('');
+
+    try {
+      const token = getToken();
+      const result = await shareOrOpenPdfFromUrl(`${API_URL}/api/labels/${label.id}/pdf`, {
+        token,
+        fileName: `etiqueta-${label.productName || 'produto'}.pdf`,
+        title: `Etiqueta - ${label.productName}`,
+        text: `Etiqueta SafeKitchen de ${label.productName}.`,
+      });
+
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível compartilhar/imprimir a etiqueta.');
+    } finally {
+      setSharingId(null);
+    }
   }
 
   async function cancelLabel(label: Label) {
@@ -321,11 +344,12 @@ export function History() {
 
                     <button
                       type="button"
-                      onClick={() => openPdf(label)}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-2 text-sm font-black text-white transition hover:brightness-105"
+                      onClick={() => sharePdf(label)}
+                      disabled={sharingId === label.id}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-2 text-sm font-black text-white transition hover:brightness-105 disabled:opacity-60"
                     >
-                      <Printer size={16} />
-                      Imprimir
+                      <Share2 size={16} />
+                      {sharingId === label.id ? 'Preparando...' : 'Compartilhar / imprimir'}
                     </button>
 
                     {label.status !== 'CANCELADA' && (
