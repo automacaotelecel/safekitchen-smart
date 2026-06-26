@@ -445,43 +445,102 @@ html.dark aside:not(.app-content aside) {
   overflow-wrap: anywhere;
 }
 
+/* =========================================================
+   IMPRESSÃO TÉRMICA (50x30mm)
+   Substitui qualquer configuração anterior de impressão
+   ========================================================= */
 @media print {
+  /* 1. Define o tamanho exato da etiqueta térmica */
   @page {
-    size: A4 portrait;
-    margin: 8mm;
-  }
-
-  html,
-  body,
-  #root {
-    background: #ffffff !important;
+    size: 50mm 30mm;
+    margin: 0;
   }
 
   body {
     margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  .no-print {
-    display: none !important;
-  }
-
+  /* 2. Oculta tudo o que não for a etiqueta */
+  .no-print, 
+  .print-page-toolbar, 
+  .print-page-help, 
   .print-page-screen {
-    padding: 0 !important;
-    background: #ffffff !important;
+    display: none !important;
+    background: transparent !important;
   }
 
+  /* 3. Prepara a folha e os cards para o tamanho correto */
   .print-label-sheet {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8mm 7mm !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .print-label-card {
-    width: 100% !important;
-    min-height: 46mm !important;
-    border-radius: 3mm !important;
+    width: 50mm !important;
+    height: 30mm !important;
+    margin: 0 !important;
+    padding: 2mm !important; /* Respiro interno */
+    border: none !important; /* Remove bordas visíveis na etiqueta */
     box-shadow: none !important;
+    box-sizing: border-box;
+    
+    /* Força quebra de página a cada etiqueta */
+    page-break-after: always; 
+    page-break-inside: avoid;
+    overflow: hidden; 
+    
+    /* Ajuste de fontes */
+    font-family: Arial, sans-serif !important;
+    font-size: 7px !important;
+    line-height: 1.1 !important;
+    color: black !important;
+  }
+
+  /* Ajustes internos para caber nos 30mm */
+  .print-label-header {
+    background: transparent !important;
+    color: black !important;
+    padding: 0 !important;
+    margin-bottom: 2px !important;
+    border-bottom: 1px solid black !important;
+  }
+
+  .print-label-header h2 {
+    font-size: 9px !important;
+    font-weight: 900 !important;
+    margin: 0 !important;
+    color: black !important;
+  }
+
+  .print-label-header p {
+    font-size: 6px !important;
+    margin: 0 !important;
+    color: black !important;
+  }
+
+  .print-label-row {
+    display: flex !important;
+    justify-content: space-between !important;
+    margin-bottom: 1px !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .print-label-row span, .print-label-row strong {
+    color: black !important;
+  }
+
+  .print-label-footer {
+    font-size: 5px !important;
+    text-align: center !important;
+    margin-top: 2px !important;
+    border-top: 1px dashed black !important;
+    padding-top: 1px !important;
+    color: black !important;
   }
 }
