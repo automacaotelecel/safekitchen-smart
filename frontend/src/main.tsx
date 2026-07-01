@@ -1,53 +1,56 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
-export const InstallButton = () => {
-  // Estado para guardar o evento de instalação do navegador
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+// === IMPORTANDO AS SUAS PÁGINAS ===
+import { Login } from './pages/Login';
+import { Dashboard } from './pages/Dashboard';
+import { NewLabel } from './pages/NewLabel';
+import { LabelManagement } from './pages/LabelManagement';
+import PrintQueue from './pages/PrintQueue'; 
+import { PrintLabelsPage } from './pages/PrintLabelsPage';
+import { AiAssistant } from './pages/AiAssistant';
+import { Products } from './pages/Products';
+import { ProductDetails } from './pages/ProductDetails';
+import { Employees } from './pages/Employees';
 
-  useEffect(() => {
-    // Função para capturar o evento
-    const handleBeforeInstallPrompt = (e: Event) => {
-      // Impede o navegador de mostrar o prompt padrão imediatamente
-      e.preventDefault();
-      // Guarda o evento no estado para usarmos quando o usuário clicar no botão
-      setDeferredPrompt(e);
-    };
+// === IMPORTANDO O MENU E A PROTEÇÃO DE TELA ===
+import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+// === ESTILO GLOBAL ===
+import './index.css';
 
-    // Limpeza do evento
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <Routes>
+        {/* Página de Login (Pública) */}
+        <Route path="/login" element={<Login />} />
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-
-    // Mostra o prompt de instalação nativo do navegador
-    deferredPrompt.prompt();
-
-    // Aguarda a escolha do usuário (aceitou ou recusou)
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('O usuário aceitou a instalação do PWA');
-    } else {
-      console.log('O usuário recusou a instalação do PWA');
-    }
-
-    // Limpa o prompt guardado, pois ele só pode ser usado uma vez
-    setDeferredPrompt(null);
-  };
-
-  // Se o evento ainda não foi disparado (ou se o app já está instalado), não renderiza o botão
-  if (!deferredPrompt) {
-    return null; 
-  }
-
-  return (
-    <button onClick={handleInstallClick} className="seu-estilo-de-botao-aqui">
-      Baixar Aplicativo
-    </button>
-  );
-};
+        {/* Páginas Internas (Protegidas por senha e com o Menu Lateral do Layout) */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Página Inicial padrão */}
+          <Route index element={<Dashboard />} />
+          
+          {/* Outras páginas do seu menu */}
+          <Route path="nova-etiqueta" element={<NewLabel />} />
+          <Route path="historico" element={<LabelManagement />} />
+          <Route path="impressao" element={<PrintQueue />} />
+          <Route path="imprimir-folha" element={<PrintLabelsPage />} />
+          <Route path="ia" element={<AiAssistant />} />
+          <Route path="produtos" element={<Products />} />
+          <Route path="produtos/:id" element={<ProductDetails />} />
+          <Route path="funcionarios" element={<Employees />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  </React.StrictMode>
+);
