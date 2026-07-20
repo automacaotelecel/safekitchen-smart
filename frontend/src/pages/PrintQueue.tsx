@@ -6,7 +6,9 @@ import {
   Search,
   Share2,
   Square,
+  Printer,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { api, API_URL, getToken } from '../api/client';
 import { formatDateBR, getValidityVisual } from '../utils/validityVisual';
@@ -70,6 +72,7 @@ function slugText(value: string) {
 }
 
 export function PrintQueue() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<LabelItem[]>([]);
   const [selected, setSelected] = useState<PrintSelection[]>([]);
   const [search, setSearch] = useState('');
@@ -172,9 +175,18 @@ export function PrintQueue() {
     });
   }
 
-  function openSinglePdf(id: string) {
-    const token = getToken();
-    window.open(`${API_URL}/api/labels/${id}/pdf?token=${token || ''}`, '_blank');
+  function printSingle(id: string) {
+    navigate(`/imprimir-folha?items=${encodeURIComponent(`${id}:1`)}`);
+  }
+
+  function printSelected() {
+    if (!selected.length) {
+      setMessage('Selecione pelo menos uma etiqueta.');
+      return;
+    }
+
+    const items = selected.map((item) => `${item.id}:${item.copies}`).join(',');
+    navigate(`/imprimir-folha?items=${encodeURIComponent(items)}`);
   }
 
   async function shareSinglePdf(item: LabelItem) {
@@ -277,14 +289,22 @@ export function PrintQueue() {
 
             <button
               type="button"
-              onClick={shareBatchPdf}
+              onClick={printSelected}
               disabled={!selected.length || sharing}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
+              <Printer size={16} />
+              {`Imprimir agora (${selected.length})`}
+            </button>
+
+            <button
+              type="button"
+              onClick={shareBatchPdf}
+              disabled={!selected.length || sharing}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-safe-dark disabled:opacity-50"
+            >
               <Share2 size={16} />
-              {sharing
-                ? 'Preparando...'
-                : `Compartilhar / imprimir (${selected.length})`}
+              {sharing ? 'Preparando...' : 'Compartilhar PDF'}
             </button>
           </div>
         </div>
@@ -408,11 +428,11 @@ export function PrintQueue() {
 
                       <button
                         type="button"
-                        onClick={() => openSinglePdf(item.id)}
+                        onClick={() => printSingle(item.id)}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-safe-dark transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#202020] dark:text-white dark:hover:bg-white/10"
                       >
-                        <FileText size={16} />
-                        Abrir PDF
+                        <Printer size={16} />
+                        Imprimir agora
                       </button>
 
                       <button

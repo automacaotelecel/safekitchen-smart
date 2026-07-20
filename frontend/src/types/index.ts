@@ -181,3 +181,72 @@ export type ApiResponse<T> = {
   message?: string;
   details?: unknown;
 };
+
+export type TemperatureCategory =
+  | 'EQUIPMENT'
+  | 'PREPARATION'
+  | 'DELIVERY'
+  | 'FRYING_OIL'
+  | 'READY_FOOD'
+  | 'REFRIGERATED_FOOD'
+  | 'DISTRIBUTION'
+  | 'RECEIVING';
+
+export type TemperaturePoint = {
+  id: string;
+  name: string;
+  category: TemperatureCategory;
+  minTemperature?: number | null;
+  maxTemperature?: number | null;
+  active: boolean;
+};
+
+export type TemperatureReading = {
+  id: string;
+  pointId?: string | null;
+  category: TemperatureCategory;
+  subject: string;
+  temperatureC: number;
+  secondaryTemperatureC?: number | null;
+  tertiaryTemperatureC?: number | null;
+  occurredAt: string;
+  source: 'MANUAL' | 'DEVICE' | string;
+  status: 'NORMAL' | 'ALERT' | string;
+  responsibleName: string;
+  notes?: string | null;
+  point?: TemperaturePoint | null;
+};
+
+export type StoredDocument = {
+  id: string;
+  name: string;
+  category: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  reminderDays: number;
+  notes?: string | null;
+  status: string;
+  createdAt: string;
+};
+
+export type ComplianceType =
+  | 'MAINTENANCE'
+  | 'RESERVOIR_CLEANING'
+  | 'NON_ROUTINE_CLEANING'
+  | 'TRAINING'
+  | 'RECEIVING';
+
+export type ComplianceRecord = {
+  id: string;
+  type: ComplianceType;
+  subject: string;
+  occurredAt: string;
+  nextDueAt?: string | null;
+  responsibleName: string;
+  notes?: string | null;
+  status: string;
+  createdAt: string;
+};

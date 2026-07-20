@@ -149,16 +149,15 @@ export async function shareOrOpenPdfFromUrl(
   options?: SharePdfOptions
 ) {
   const mobile = isMobileDevice();
+  const blob = await fetchPdfFromUrl(url, options);
 
   if (!mobile) {
-    openUrlInNewTab(url);
+    openBlobInNewTab(blob);
     return {
       mode: 'opened' as const,
       message: 'PDF aberto em nova aba. Use Ctrl+P ou o botão de imprimir do navegador.',
     };
   }
-
-  const blob = await fetchPdfFromUrl(url, options);
 
   try {
     const shared = await sharePdfBlob(blob, options);

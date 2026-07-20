@@ -106,9 +106,16 @@ export function History() {
     });
   }, [labels, search, statusFilter]);
 
-  function openPdf(label: Label) {
-    const token = getToken();
-    window.open(`${API_URL}/api/labels/${label.id}/pdf?token=${token || ''}`, '_blank');
+  async function openPdf(label: Label) {
+    try {
+      const token = getToken();
+      await shareOrOpenPdfFromUrl(`${API_URL}/api/labels/${label.id}/pdf`, {
+        token,
+        fileName: `etiqueta-${label.productName || 'produto'}.pdf`,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível abrir o PDF.');
+    }
   }
 
   async function sharePdf(label: Label) {

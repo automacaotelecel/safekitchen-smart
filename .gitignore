@@ -15,3 +15,6 @@ backend/prisma/dev.db-journal
 *.db-journal
 
 .DS_Store
+
+.env
+*.zip

@@ -184,13 +184,19 @@ export function PrintLabelsPage() {
       setLoading(true);
       setError('');
 
+      if (printItems.length === 0) {
+        setLabels([]);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const response = await api<unknown>('/api/labels?includeCanceled=0&limit=600');
-        const allLabels = Array.isArray(response)
-          ? (response as Label[])
-          : Array.isArray((response as any)?.labels)
-            ? ((response as any).labels as Label[])
-            : [];
+        const allLabels = await api<Label[]>('/api/labels/by-ids', {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: Array.from(new Set(printItems.map((item) => item.id))),
+          }),
+        });
 
         const orderedLabels: Label[] = [];
 

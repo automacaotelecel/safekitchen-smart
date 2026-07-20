@@ -20,8 +20,11 @@ type LoginResponse = {
 export function Login() {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('admin@safekitchen.com.br');
-  const [password, setPassword] = useState('123456');
+  const [registering, setRegistering] = useState(false);
+  const [restaurantName, setRestaurantName] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -32,9 +35,13 @@ export function Login() {
     setError('');
 
     try {
-      const data = await api<LoginResponse>('/api/auth/login', {
+      const data = await api<LoginResponse>(registering ? '/api/auth/register' : '/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(
+          registering
+            ? { restaurantName, name, email, password }
+            : { email, password }
+        ),
       });
 
       setToken(data.token);
@@ -157,14 +164,40 @@ export function Login() {
             </p>
 
             <h2 className="mt-2 text-3xl font-black text-white">
-              Entrar no sistema
+              {registering ? 'Criar conta' : 'Entrar no sistema'}
             </h2>
 
             <p className="mt-2 text-sm font-semibold text-white/65">
-              Use o acesso demo para testar a primeira versão.
+              {registering
+                ? 'Comece com 7 dias de teste e cadastre sua operação.'
+                : 'Acesse os controles da sua empresa com segurança.'}
             </p>
 
-            <label className="mt-8 block text-sm font-bold text-white/85">
+            {registering && (
+              <>
+                <label className="mt-8 block text-sm font-bold text-white/85">
+                  Nome da empresa/restaurante
+                </label>
+                <input
+                  required
+                  value={restaurantName}
+                  onChange={(event) => setRestaurantName(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#19F5C7]"
+                />
+
+                <label className="mt-5 block text-sm font-bold text-white/85">
+                  Seu nome
+                </label>
+                <input
+                  required
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-[#19F5C7]"
+                />
+              </>
+            )}
+
+            <label className={`${registering ? 'mt-5' : 'mt-8'} block text-sm font-bold text-white/85`}>
               E-mail
             </label>
 
@@ -189,6 +222,7 @@ export function Login() {
 
               <input
                 type="password"
+                minLength={registering ? 8 : undefined}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
@@ -206,13 +240,22 @@ export function Login() {
               disabled={loading}
               className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#35F29E,#18C9D7)] px-5 py-4 text-sm font-black text-[#031B22] shadow-[0_18px_45px_rgba(25,245,199,0.24)] transition hover:brightness-105 disabled:opacity-60"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading
+                ? registering ? 'Criando conta...' : 'Entrando...'
+                : registering ? 'Criar conta e iniciar teste' : 'Entrar'}
               <ArrowRight size={18} />
             </button>
 
-            <div className="mt-6 rounded-3xl border border-white/10 bg-white/8 p-4 text-center text-xs font-bold text-[#19F5C7]">
-              Demo: admin@safekitchen.com.br / 123456
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRegistering((old) => !old);
+                setError('');
+              }}
+              className="mt-6 w-full rounded-3xl border border-white/10 bg-white/8 p-4 text-center text-xs font-bold text-[#19F5C7]"
+            >
+              {registering ? 'Já tenho conta' : 'Criar conta com 7 dias de teste'}
+            </button>
           </form>
         </div>
       </div>

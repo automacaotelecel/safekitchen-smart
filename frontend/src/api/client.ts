@@ -1,8 +1,9 @@
 import type { ApiResponse } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3333').replace(/\/$/, '');
 
 const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -29,32 +30,51 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(options.headers as Record<string, string> | undefined),
-      };
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+    try {
+      const headers = new Headers(options.headers);
+
+      if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
       }
 
-      const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+
+      const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+        signal: options.signal || controller.signal,
+      });
+
       const json = (await response.json().catch(() => null)) as ApiResponse<T> | null;
 
+      if (response.status === 401 && path !== '/api/auth/login') {
+        clearToken();
+
+        if (window.location.pathname !== '/login') {
+          window.location.assign('/login');
+        }
+      }
+
       if (!response.ok || !json?.ok) {
-        throw new Error(json?.message || 'Erro na comunicação com o servidor.');
+        throw new Error(json?.message || `Erro na comunicação com o servidor (HTTP ${response.status}).`);
       }
 
       return json.data;
     } catch (error) {
-      lastError = error;
+      lastError =
+        error instanceof DOMException && error.name === 'AbortError'
+          ? new Error('O servidor demorou demais para responder.')
+          : error;
 
-      if (!shouldRetry || attempt === attempts) {
-        break;
-      }
-
+      if (!shouldRetry || attempt === attempts) break;
       await sleep(700 * attempt);
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
@@ -63,9 +83,21 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     : new Error('Erro na comunicação com o servidor.');
 }
 
-export function pdfUrl(labelId: string) {
-  const token = getToken();
-  return `${API_URL}/api/labels/${labelId}/pdf?token=${token || ''}`;
+export async function uploadToSignedUrl(
+  uploadUrl: string,
+  file: File,
+  headers: Record<string, string> = {}
+) {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers,
+    body: file,
+  });
+
+  if (!response.ok) {
+    throw new Error('Não foi possível enviar o arquivo para o armazenamento.');
+  }
 }
 
 export { API_URL };
+

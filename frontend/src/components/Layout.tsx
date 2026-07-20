@@ -13,6 +13,10 @@ import {
   ChevronRight,
   Download,
   Sparkles,
+  Thermometer,
+  FolderClock,
+  ClipboardCheck,
+  UserCog,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -24,9 +28,13 @@ const links = [
   { to: '/nova-etiqueta', label: 'Nova etiqueta', icon: Tags },
   { to: '/historico', label: 'Histórico', icon: ClipboardList },
   { to: '/impressao', label: 'Impressão', icon: Printer },
+  { to: '/temperaturas', label: 'Temperaturas', icon: Thermometer },
+  { to: '/documentos', label: 'Documentos', icon: FolderClock },
+  { to: '/controles', label: 'Controles', icon: ClipboardCheck },
   { to: '/ia', label: 'IA', icon: Sparkles },
   { to: '/produtos', label: 'Produtos', icon: PackagePlus },
   { to: '/funcionarios', label: 'Funcionários', icon: Users },
+  { to: '/conta', label: 'Conta e equipe', icon: UserCog },
 ];
 
 function LogoImage({ compact = false }: { compact?: boolean }) {

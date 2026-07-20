@@ -3,36 +3,63 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Restaurant {
-  id        String   @id @default(cuid())
-  name      String
-  logoUrl   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  name               String
+  slug               String    @unique
+  document           String?
+  logoUrl            String?
+  timezone           String    @default("America/Sao_Paulo")
+  plan               String    @default("TRIAL")
+  subscriptionStatus String    @default("TRIALING")
+  trialEndsAt        DateTime?
+  subscriptionEndsAt DateTime?
+  maxUsers           Int       @default(5)
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  users     User[]
-  employees Employee[]
-  products  Product[]
-  labels    Label[]
+  users               User[]
+  employees           Employee[]
+  products            Product[]
+  labels              Label[]
+  documents           Document[]
+  temperaturePoints   TemperaturePoint[]
+  temperatureDevices  TemperatureDevice[]
+  temperatureReadings TemperatureReading[]
+  complianceRecords   ComplianceRecord[]
+  auditLogs           AuditLog[]
+  aiUsage             AiUsage[]
+
+  @@index([subscriptionStatus])
+  @@index([active])
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   restaurantId String
   name         String
-  email        String   @unique
+  email        String    @unique
   passwordHash String
-  role         String   @default("ADMIN")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         String    @default("ADMIN")
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  documents           Document[]
+  temperatureReadings TemperatureReading[]
+  complianceRecords   ComplianceRecord[]
+  auditLogs           AuditLog[]
+  aiUsage             AiUsage[]
 
   @@index([restaurantId])
+  @@index([restaurantId, active])
 }
 
 model Employee {
@@ -51,7 +78,7 @@ model Employee {
   labels     Label[]
 
   @@index([restaurantId])
-  @@index([active])
+  @@index([restaurantId, active])
 }
 
 model Product {
@@ -127,4 +154,162 @@ model Label {
   @@index([status])
   @@index([expiresAt])
   @@index([createdAt])
+  @@index([restaurantId, status, expiresAt])
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  restaurantId String
+  uploadedById String
+  name         String
+  category     String
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Int?
+  storageKey   String?   @unique
+  externalUrl  String?
+  issuedAt     DateTime?
+  expiresAt    DateTime?
+  reminderDays Int       @default(30)
+  notes        String?
+  status       String    @default("ACTIVE")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, status])
+  @@index([restaurantId, expiresAt])
+  @@index([category])
+}
+
+model TemperaturePoint {
+  id             String   @id @default(cuid())
+  restaurantId   String
+  name           String
+  category       String
+  minTemperature Float?
+  maxTemperature Float?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  restaurant Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  devices    TemperatureDevice[]
+  readings   TemperatureReading[]
+
+  @@unique([restaurantId, name, category])
+  @@index([restaurantId, active])
+}
+
+model TemperatureDevice {
+  id           String    @id @default(cuid())
+  restaurantId String
+  pointId      String?
+  name         String
+  externalId   String?
+  protocol     String    @default("API")
+  apiKeyHash   String?
+  active       Boolean   @default(true)
+  lastSeenAt   DateTime?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  restaurant Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  point      TemperaturePoint?    @relation(fields: [pointId], references: [id], onDelete: SetNull)
+  readings   TemperatureReading[]
+
+  @@unique([restaurantId, externalId])
+  @@index([restaurantId, active])
+  @@index([pointId])
+}
+
+model TemperatureReading {
+  id                    String   @id @default(cuid())
+  restaurantId          String
+  pointId               String?
+  deviceId              String?
+  createdById           String?
+  category              String
+  subject               String
+  temperatureC          Float
+  secondaryTemperatureC Float?
+  tertiaryTemperatureC  Float?
+  occurredAt            DateTime
+  source                String   @default("MANUAL")
+  status                String   @default("NORMAL")
+  responsibleName       String
+  notes                 String?
+  metadata              Json?
+  createdAt             DateTime @default(now())
+
+  restaurant Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  point      TemperaturePoint?  @relation(fields: [pointId], references: [id], onDelete: SetNull)
+  device     TemperatureDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  createdBy  User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, occurredAt])
+  @@index([restaurantId, category, occurredAt])
+  @@index([restaurantId, status, occurredAt])
+  @@index([pointId, occurredAt])
+  @@index([deviceId, occurredAt])
+}
+
+model ComplianceRecord {
+  id              String    @id @default(cuid())
+  restaurantId    String
+  createdById     String
+  type            String
+  subject         String
+  occurredAt      DateTime
+  nextDueAt       DateTime?
+  responsibleName String
+  notes           String?
+  data            Json?
+  status          String    @default("ACTIVE")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, type, occurredAt])
+  @@index([restaurantId, status, nextDueAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  restaurantId String
+  userId       String?
+  action       String
+  entity       String
+  entityId     String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, createdAt])
+  @@index([entity, entityId])
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  restaurantId String
+  userId       String?
+  feature      String
+  model        String
+  success      Boolean
+  inputTokens  Int?
+  outputTokens Int?
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, feature, createdAt])
 }

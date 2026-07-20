@@ -5,13 +5,18 @@ import { env } from '../../config/env';
 import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware } from '../auth/auth.middleware';
+import { requireActiveSubscription } from '../subscription/subscription.middleware';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireActiveSubscription);
 
 const identifySchema = z.object({
-  imageBase64: z.string().min(100, 'Imagem inválida ou muito pequena.'),
+  imageBase64: z
+    .string()
+    .min(100, 'Imagem inválida ou muito pequena.')
+    .max(Math.ceil(env.maxImageBytes * 1.5), 'Imagem maior que o limite permitido.'),
   mimeType: z.string().optional().default('image/jpeg'),
 });
 
@@ -35,22 +40,63 @@ type GeminiSuggestion = {
   notes: string;
 };
 
+type GeminiUsage = {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+};
+
+class ProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string
+  ) {
+    super(message);
+  }
+}
+
 const allowedMimeTypes = new Set([
   'image/jpeg',
   'image/jpg',
   'image/png',
   'image/webp',
-  'image/heic',
-  'image/heif',
 ]);
 
 function normalizeMimeType(mimeType: string) {
   const value = String(mimeType || 'image/jpeg').toLowerCase().trim();
-  return allowedMimeTypes.has(value) ? value : 'image/jpeg';
+
+  if (!allowedMimeTypes.has(value)) {
+    throw new ProviderError(
+      'Formato de imagem não suportado. Use JPEG, PNG ou WebP.',
+      422,
+      'UNSUPPORTED_IMAGE'
+    );
+  }
+
+  return value === 'image/jpg' ? 'image/jpeg' : value;
 }
 
 function cleanBase64(imageBase64: string) {
-  return imageBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '').trim();
+  const cleaned = imageBase64
+    .replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '')
+    .replace(/\s/g, '')
+    .trim();
+
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
+    throw new ProviderError('Conteúdo da imagem inválido.', 422, 'INVALID_IMAGE');
+  }
+
+  const bytes = Buffer.byteLength(cleaned, 'base64');
+
+  if (bytes > env.maxImageBytes) {
+    throw new ProviderError(
+      `Imagem maior que o limite de ${Math.round(env.maxImageBytes / 1024 / 1024)} MB.`,
+      413,
+      'IMAGE_TOO_LARGE'
+    );
+  }
+
+  return cleaned;
 }
 
 function text(value: unknown) {
@@ -67,11 +113,24 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
   const lastBrace = cleaned.lastIndexOf('}');
 
   if (firstBrace === -1 || lastBrace === -1) {
-    throw new Error('A IA respondeu, mas não retornou um JSON válido. Tente outra foto mais nítida.');
+    throw new ProviderError(
+      'A IA não retornou dados estruturados. Tente outra foto.',
+      502,
+      'INVALID_PROVIDER_RESPONSE'
+    );
   }
 
-  const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
-  const parsed = JSON.parse(jsonText) as Partial<GeminiSuggestion>;
+  let parsed: Partial<GeminiSuggestion>;
+
+  try {
+    parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as Partial<GeminiSuggestion>;
+  } catch {
+    throw new ProviderError(
+      'A IA respondeu em formato inválido. Tente outra foto.',
+      502,
+      'INVALID_PROVIDER_JSON'
+    );
+  }
 
   const conservationMode =
     parsed.conservationMode === 'AMBIENTE' ||
@@ -129,7 +188,6 @@ function scoreProduct(
   );
 
   let score = 0;
-
   const terms = Array.from(new Set(aiText.split(/\s+/).filter((term) => term.length >= 3)));
 
   for (const term of terms) {
@@ -137,9 +195,7 @@ function scoreProduct(
   }
 
   const productName = normalizeText(suggestion.productName);
-
   if (productName && productText.includes(productName)) score += 6;
-
   if (suggestion.brand && productText.includes(normalizeText(suggestion.brand))) score += 2;
 
   return score;
@@ -155,7 +211,9 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
       validityRules: true,
       _count: {
         select: {
-          labels: true,
+          labels: {
+            where: { restaurantId },
+          },
         },
       },
     },
@@ -167,40 +225,22 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
-
-  if (!best || best.score < 2) return null;
-
-  return best.product;
+  return !best || best.score < 2 ? null : best.product;
 }
 
 function buildGeminiRequestBody(imageBase64: string, mimeType: string) {
   const prompt = `
-Você é uma IA de apoio para um sistema de etiquetas sanitárias de cozinha profissional chamado SafeKitchen Smart.
-
-Analise a imagem do produto alimentício, embalagem, rótulo ou item de cozinha.
-
-Retorne APENAS um JSON válido, sem markdown, sem comentários e sem explicação fora do JSON.
-
-Campos obrigatórios:
-{
-  "productName": "nome provável do produto em português, em CAIXA ALTA",
-  "brand": "marca provável se estiver visível, ou string vazia",
-  "detectedBatch": "lote provável se estiver claramente visível, ou string vazia. Nunca invente lote.",
-  "category": "categoria provável: Laticínios, Carnes e frios, Hortifruti, Panificação, Molhos e temperos, Enlatados e conservas, Bebidas, Produto químico, Grãos e secos, Outros",
-  "conservationMode": "AMBIENTE ou REFRIGERADO ou CONGELADO",
-  "labelType": "PRODUTO_ABERTO ou PRODUCAO ou DESCONGELAMENTO_DESSALGUE ou ARMAZENAMENTO_CARNES ou REEMBALAGEM ou AMOSTRAS ou NAO_CONFORME ou PRODUTO_QUIMICO",
-  "keywords": "palavras úteis para busca no banco, separadas por espaço",
-  "confidence": número entre 0 e 1,
-  "notes": "observação curta orientando o usuário a conferir nome, marca, lote e validade"
-}
+Você é uma IA de apoio para o SafeKitchen Smart, um sistema de segurança dos alimentos.
+Leia a embalagem ou o rótulo visível na foto e sugira os dados para uma etiqueta sanitária.
 
 Regras:
-- Se for alimento industrializado aberto, use labelType PRODUTO_ABERTO.
-- Se parecer produto químico de limpeza, detergente, sanitizante, desinfetante ou similar, use labelType PRODUTO_QUIMICO.
-- Se parecer carne, peixe, frango ou suíno embalado/armazenado, use ARMAZENAMENTO_CARNES.
-- Se não tiver certeza, use confidence baixo.
-- Nunca invente lote, data de fabricação, validade ou informação que não esteja visível.
-- Não gere etiqueta. Apenas sugira preenchimento.
+- Nunca invente lote, data, marca ou validade.
+- Se não conseguir ler um campo, devolva string vazia.
+- Se for alimento industrializado aberto, use PRODUTO_ABERTO.
+- Se for produto de limpeza, use PRODUTO_QUIMICO.
+- Se for carne, peixe, frango ou suíno armazenado, use ARMAZENAMENTO_CARNES.
+- Confiança baixa quando a foto estiver ruim ou ambígua.
+- Responda somente com o objeto solicitado.
 `;
 
   return {
@@ -212,61 +252,171 @@ Regras:
           {
             inlineData: {
               mimeType,
-              data: cleanBase64(imageBase64),
+              data: imageBase64,
             },
           },
         ],
       },
     ],
     generationConfig: {
-      temperature: 0.15,
+      temperature: 0.1,
       topP: 0.8,
-      topK: 40,
       maxOutputTokens: 900,
       responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        required: [
+          'productName',
+          'brand',
+          'detectedBatch',
+          'category',
+          'conservationMode',
+          'labelType',
+          'keywords',
+          'confidence',
+          'notes',
+        ],
+        properties: {
+          productName: { type: 'STRING' },
+          brand: { type: 'STRING' },
+          detectedBatch: { type: 'STRING' },
+          category: { type: 'STRING' },
+          conservationMode: {
+            type: 'STRING',
+            enum: ['AMBIENTE', 'REFRIGERADO', 'CONGELADO'],
+          },
+          labelType: {
+            type: 'STRING',
+            enum: [
+              'PRODUTO_ABERTO',
+              'PRODUCAO',
+              'DESCONGELAMENTO_DESSALGUE',
+              'ARMAZENAMENTO_CARNES',
+              'REEMBALAGEM',
+              'AMOSTRAS',
+              'NAO_CONFORME',
+              'PRODUTO_QUIMICO',
+            ],
+          },
+          keywords: { type: 'STRING' },
+          confidence: { type: 'NUMBER', minimum: 0, maximum: 1 },
+          notes: { type: 'STRING' },
+        },
+      },
     },
   };
 }
 
+async function askModel(
+  model: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<{ suggestion: GeminiSuggestion; usage: GeminiUsage }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.aiTimeoutMs);
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    let response: Response | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': env.geminiApiKey,
+        },
+        body: JSON.stringify(buildGeminiRequestBody(imageBase64, mimeType)),
+        signal: controller.signal,
+      });
+
+      if (response.status !== 429 && response.status < 500) break;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+
+    if (!response) {
+      throw new ProviderError('A IA não respondeu.', 503, 'NO_RESPONSE');
+    }
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const providerMessage =
+        data?.error?.message || data?.error?.status || `HTTP ${response.status}`;
+
+      throw new ProviderError(
+        `Falha no serviço de IA: ${providerMessage}`,
+        response.status === 429 ? 429 : 503,
+        String(data?.error?.status || response.status)
+      );
+    }
+
+    const responseText = data?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text || '')
+      .join('\n')
+      .trim();
+
+    if (!responseText) {
+      throw new ProviderError(
+        'A IA não conseguiu ler essa imagem. Tente uma foto mais nítida.',
+        422,
+        'EMPTY_RESPONSE'
+      );
+    }
+
+    return {
+      suggestion: safeJsonParse(responseText),
+      usage: data?.usageMetadata || {},
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ProviderError(
+        'A análise demorou demais. Tente novamente.',
+        504,
+        'TIMEOUT'
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function askGemini(imageBase64: string, mimeType: string) {
   if (!env.geminiApiKey) {
-    throw new Error('GEMINI_API_KEY não configurada no backend/Render. Configure a variável e faça redeploy.');
-  }
-
-  const normalizedMimeType = normalizeMimeType(mimeType);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent?key=${env.geminiApiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(buildGeminiRequestBody(imageBase64, normalizedMimeType)),
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const googleMessage =
-      data?.error?.message ||
-      data?.error?.status ||
-      `HTTP ${response.status} ao consultar a IA.`;
-
-    throw new Error(
-      `Erro ao consultar Gemini: ${googleMessage}. Verifique GEMINI_API_KEY, GEMINI_MODEL e se a API Generative Language está habilitada.`
+    throw new ProviderError(
+      'IA não configurada no servidor. Configure GEMINI_API_KEY e faça um novo deploy.',
+      503,
+      'NOT_CONFIGURED'
     );
   }
 
-  const responseText = data?.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part.text || '')
-    .join('\n')
-    .trim();
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  const cleanImage = cleanBase64(imageBase64);
+  const models = Array.from(
+    new Set([env.geminiModel, ...env.geminiFallbackModels])
+  );
 
-  if (!responseText) {
-    throw new Error('A IA não retornou conteúdo para a imagem. Tente uma foto mais nítida e bem iluminada.');
+  let lastError: unknown;
+
+  for (const model of models) {
+    try {
+      const result = await askModel(model, cleanImage, normalizedMimeType);
+      return { ...result, model };
+    } catch (error) {
+      lastError = error;
+
+      if (
+        error instanceof ProviderError &&
+        !['404', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error.code)
+      ) {
+        throw error;
+      }
+    }
   }
 
-  return safeJsonParse(responseText);
+  throw lastError || new ProviderError('Nenhum modelo de IA disponível.', 503, 'NO_MODEL');
 }
 
 router.get('/health', (_req, res) => {
@@ -274,41 +424,74 @@ router.get('/health', (_req, res) => {
     enabled: Boolean(env.geminiApiKey),
     model: env.geminiModel,
     message: env.geminiApiKey
-      ? 'IA configurada no backend.'
-      : 'GEMINI_API_KEY não configurada no backend.',
+      ? 'IA configurada e pronta para teste.'
+      : 'GEMINI_API_KEY não configurada no servidor.',
   });
 });
 
 router.post('/identify-product', async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const parsed = identifySchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  }
+
   try {
-    if (!req.user) return fail(res, 'Não autenticado.', 401);
+    const ai = await askGemini(parsed.data.imageBase64, parsed.data.mimeType);
 
-    const parsed = identifySchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+    if (!ai.suggestion.productName) {
+      throw new ProviderError(
+        'Não foi possível identificar o produto. Fotografe o rótulo mais de perto.',
+        422,
+        'PRODUCT_NOT_FOUND'
+      );
     }
 
-    const suggestion = await askGemini(parsed.data.imageBase64, parsed.data.mimeType);
+    const matchedProduct = await findBestProductMatch(
+      req.user.restaurantId,
+      ai.suggestion
+    );
 
-    if (!suggestion.productName) {
-      return fail(res, 'Não foi possível identificar o produto na imagem.', 422);
-    }
-
-    const matchedProduct = await findBestProductMatch(req.user.restaurantId, suggestion);
+    await prisma.aiUsage.create({
+      data: {
+        restaurantId: req.user.restaurantId,
+        userId: req.user.userId,
+        feature: 'PRODUCT_VISION',
+        model: ai.model,
+        success: true,
+        inputTokens: ai.usage.promptTokenCount,
+        outputTokens: ai.usage.candidatesTokenCount,
+      },
+    });
 
     return ok(res, {
-      suggestion,
+      suggestion: ai.suggestion,
       matchedProduct,
       warning:
         'A identificação por câmera é uma sugestão automática. Confira os dados antes de salvar ou gerar etiqueta.',
     });
   } catch (error) {
-    return fail(
-      res,
-      error instanceof Error ? error.message : 'Erro ao identificar produto pela câmera.',
-      500
-    );
+    const providerError =
+      error instanceof ProviderError
+        ? error
+        : new ProviderError('Erro ao identificar produto pela câmera.', 500, 'INTERNAL');
+
+    await prisma.aiUsage
+      .create({
+        data: {
+          restaurantId: req.user.restaurantId,
+          userId: req.user.userId,
+          feature: 'PRODUCT_VISION',
+          model: env.geminiModel,
+          success: false,
+          errorCode: providerError.code.slice(0, 100),
+        },
+      })
+      .catch(() => undefined);
+
+    return fail(res, providerError.message, providerError.status);
   }
 });
 

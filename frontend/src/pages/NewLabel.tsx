@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CalendarDays,
   ChevronDown,
@@ -215,6 +215,7 @@ const showBrandInAdditionalTypes: LabelType[] = [
 
 export function NewLabel() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [extra, setExtra] = useState<ExtraState>(initialExtra);
@@ -254,6 +255,41 @@ export function NewLabel() {
           : [];
 
         setProducts(activeProducts);
+
+        const aiRaw = sessionStorage.getItem('safekitchen_ai_suggestion');
+
+        if (aiRaw) {
+          try {
+            const ai = JSON.parse(aiRaw) as {
+              productName?: string;
+              brand?: string;
+              detectedBatch?: string;
+              conservationMode?: ConservationMode;
+              labelType?: LabelType;
+              matchedProductId?: string;
+            };
+            const matched = ai.matchedProductId
+              ? activeProducts.find((item) => item.id === ai.matchedProductId)
+              : null;
+
+            setForm((old) => ({
+              ...old,
+              type: ai.labelType || old.type,
+              productId: matched?.id || '',
+              productName: matched?.name || ai.productName || '',
+              brand: ai.brand || '',
+              batch: ai.detectedBatch || '',
+              conservationMode:
+                matched?.defaultMode || ai.conservationMode || old.conservationMode,
+            }));
+            setSearch(matched?.name || ai.productName || '');
+            setShowAdditionalFields(Boolean(ai.brand || ai.detectedBatch));
+            sessionStorage.removeItem('safekitchen_ai_suggestion');
+            return;
+          } catch {
+            sessionStorage.removeItem('safekitchen_ai_suggestion');
+          }
+        }
 
         const productId = searchParams.get('productId');
 
@@ -555,9 +591,8 @@ export function NewLabel() {
     }
   }
 
-  function openPdf(id: string) {
-    const token = getToken();
-    window.open(`${API_URL}/api/labels/${id}/pdf?token=${token || ''}`, '_blank');
+  function printNow(id: string) {
+    navigate(`/imprimir-folha?items=${encodeURIComponent(`${id}:1`)}`);
   }
 
   async function sharePdf(label: Label) {
@@ -902,11 +937,11 @@ export function NewLabel() {
 
               <button
                 type="button"
-                onClick={() => openPdf(created.id)}
+                onClick={() => printNow(created.id)}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-black text-emerald-700"
               >
                 <Printer size={18} />
-                Abrir PDF
+                Imprimir agora
               </button>
 
               <Link

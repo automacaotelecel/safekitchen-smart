@@ -12,13 +12,32 @@ import {
   RefreshCw,
   UploadCloud,
 } from 'lucide-react';
-import { api, pdfUrl } from '../api/client';
+import { api } from '../api/client';
 import type { Label, ProductDetails as ProductDetailsType } from '../types';
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onload = () => {
+        const maxSize = 720;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+
+        const context = canvas.getContext('2d');
+        if (!context) return reject(new Error('Não foi possível processar a imagem.'));
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+
+      image.onerror = () => reject(new Error('Imagem inválida.'));
+      image.src = String(reader.result || '');
+    };
     reader.onerror = () => reject(new Error('Não foi possível carregar a imagem.'));
     reader.readAsDataURL(file);
   });
@@ -70,7 +89,7 @@ export function ProductDetails() {
 
     try {
       if (!file.type.startsWith('image/')) throw new Error('Selecione uma imagem válida.');
-      if (file.size > 4 * 1024 * 1024) throw new Error('A imagem está muito grande. Use uma imagem de até 4MB.');
+      if (file.size > 8 * 1024 * 1024) throw new Error('A imagem está muito grande. Use uma imagem de até 8MB.');
 
       const imageUrl = await fileToDataUrl(file);
       const updated = await api<ProductDetailsType | ProductDetailsType['validityRules'][number]>(`/api/products/${product.id}`, {
@@ -217,8 +236,8 @@ export function ProductDetails() {
                     <div className="font-bold text-slate-600">{label.quantity || '-'}</div>
 
                     <div className="flex justify-end">
-                      <button type="button" onClick={() => window.open(pdfUrl(label.id), '_blank')} className="inline-flex items-center gap-1 rounded-xl bg-safe-dark px-3 py-2 text-xs font-black text-white">
-                        <Printer size={14} /> PDF
+                      <button type="button" onClick={() => navigate(`/imprimir-folha?items=${encodeURIComponent(`${label.id}:1`)}`)} className="inline-flex items-center gap-1 rounded-xl bg-safe-dark px-3 py-2 text-xs font-black text-white">
+                        <Printer size={14} /> Imprimir
                       </button>
                     </div>
                   </div>

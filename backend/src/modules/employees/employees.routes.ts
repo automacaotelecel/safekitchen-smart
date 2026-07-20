@@ -3,11 +3,13 @@ import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma';
 import { fail, ok } from '../../lib/http';
-import { authMiddleware } from '../auth/auth.middleware';
+import { authMiddleware, requireRole } from '../auth/auth.middleware';
+import { requireActiveSubscription } from '../subscription/subscription.middleware';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireActiveSubscription);
 
 const createEmployeeSchema = z.object({
   name: z.string().min(2, 'Informe o nome do funcionário.'),
@@ -47,7 +49,7 @@ router.get('/', async (req, res) => {
   return ok(res, employees);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = createEmployeeSchema.safeParse(req.body);
@@ -71,7 +73,7 @@ router.post('/', async (req, res) => {
   return ok(res, employee, 201);
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = updateEmployeeSchema.safeParse(req.body);
@@ -82,7 +84,7 @@ router.patch('/:id', async (req, res) => {
 
   const employee = await prisma.employee.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });
@@ -108,12 +110,12 @@ router.patch('/:id', async (req, res) => {
   return ok(res, updated);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const employee = await prisma.employee.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });

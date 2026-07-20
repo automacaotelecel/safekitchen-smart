@@ -3,11 +3,13 @@ import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma';
 import { fail, ok } from '../../lib/http';
-import { authMiddleware } from '../auth/auth.middleware';
+import { authMiddleware, requireRole } from '../auth/auth.middleware';
+import { requireActiveSubscription } from '../subscription/subscription.middleware';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireActiveSubscription);
 
 const productSchema = z.object({
   name: z.string().min(2, 'Informe o nome do produto.'),
@@ -48,9 +50,9 @@ router.get('/', async (req, res) => {
         search
           ? {
               OR: [
-                { name: { contains: search } },
-                { category: { contains: search } },
-                { keywords: { contains: search } },
+                { name: { contains: search, mode: 'insensitive' } },
+                { category: { contains: search, mode: 'insensitive' } },
+                { keywords: { contains: search, mode: 'insensitive' } },
               ],
             }
           : {},
@@ -60,7 +62,9 @@ router.get('/', async (req, res) => {
       validityRules: true,
       _count: {
         select: {
-          labels: true,
+          labels: {
+            where: { restaurantId: req.user.restaurantId },
+          },
         },
       },
     },
@@ -78,7 +82,7 @@ router.get('/:id', async (req, res) => {
 
   const product = await prisma.product.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       OR: [
         { restaurantId: req.user.restaurantId },
         { isGlobal: true },
@@ -87,6 +91,9 @@ router.get('/:id', async (req, res) => {
     include: {
       validityRules: true,
       labels: {
+        where: {
+          restaurantId: req.user.restaurantId,
+        },
         orderBy: {
           createdAt: 'desc',
         },
@@ -94,7 +101,9 @@ router.get('/:id', async (req, res) => {
       },
       _count: {
         select: {
-          labels: true,
+          labels: {
+            where: { restaurantId: req.user.restaurantId },
+          },
         },
       },
     },
@@ -105,7 +114,7 @@ router.get('/:id', async (req, res) => {
   return ok(res, product);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = productSchema.safeParse(req.body);
@@ -138,7 +147,7 @@ router.post('/', async (req, res) => {
   return ok(res, product, 201);
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = updateProductSchema.safeParse(req.body);
@@ -149,7 +158,7 @@ router.patch('/:id', async (req, res) => {
 
   const product = await prisma.product.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });
@@ -183,12 +192,12 @@ router.patch('/:id', async (req, res) => {
   return ok(res, updated);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const product = await prisma.product.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
     include: {

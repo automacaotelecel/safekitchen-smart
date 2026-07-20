@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "20.x"
+    "node": ">=20.19 <21"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5174 --strictPort",
@@ -12,7 +12,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.3",
     "@zxing/browser": "^0.1.5",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.468.0",
@@ -20,7 +20,7 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.3"
+    "vite": "^8.1.5"
   },
   "devDependencies": {
     "@types/react": "^19.0.1",

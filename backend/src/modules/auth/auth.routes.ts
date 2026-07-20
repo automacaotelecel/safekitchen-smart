@@ -1,52 +1,127 @@
+import { randomBytes } from 'crypto';
+
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { fail, ok } from '../../lib/http';
+
 import { env } from '../../config/env';
-import { authMiddleware } from './auth.middleware';
+import { recordAudit } from '../../lib/audit';
+import { fail, ok } from '../../lib/http';
+import { prisma } from '../../lib/prisma';
+import { authMiddleware, type AuthUser } from './auth.middleware';
 
 const router = Router();
 
 const registerSchema = z.object({
-  restaurantName: z.string().min(2),
-  name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(6)
+  restaurantName: z.string().trim().min(2).max(120),
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(180),
+  password: z.string().min(8).max(100),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1)
+  email: z.string().trim().email(),
+  password: z.string().min(1).max(100),
 });
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function slugify(value: string) {
+  const base = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48);
+
+  return `${base || 'empresa'}-${randomBytes(3).toString('hex')}`;
+}
+
+function signToken(user: AuthUser) {
+  return jwt.sign(user, env.jwtSecret, { expiresIn: '12h' });
+}
 
 router.post('/register', async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
 
-  const { restaurantName, name, email, password } = parsed.data;
+  const email = normalizeEmail(parsed.data.email);
   const exists = await prisma.user.findUnique({ where: { email } });
   if (exists) return fail(res, 'Este e-mail já está cadastrado.', 409);
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
   const restaurant = await prisma.restaurant.create({
     data: {
-      name: restaurantName,
-      users: { create: { name, email, passwordHash, role: 'ADMIN' } },
-      employees: { create: { name, active: true } }
+      name: parsed.data.restaurantName,
+      slug: slugify(parsed.data.restaurantName),
+      trialEndsAt,
+      users: {
+        create: {
+          name: parsed.data.name,
+          email,
+          passwordHash,
+          role: 'ADMIN',
+        },
+      },
+      employees: {
+        create: {
+          name: parsed.data.name,
+          role: 'Administrador',
+          active: true,
+        },
+      },
     },
-    include: { users: true }
+    include: {
+      users: true,
+    },
   });
 
   const user = restaurant.users[0];
-  const token = jwt.sign(
-    { userId: user.id, restaurantId: restaurant.id, role: user.role, name: user.name, email: user.email },
-    env.jwtSecret,
-    { expiresIn: '7d' }
-  );
+  const authUser: AuthUser = {
+    userId: user.id,
+    restaurantId: restaurant.id,
+    role: 'ADMIN',
+    name: user.name,
+    email: user.email,
+    subscriptionStatus: restaurant.subscriptionStatus,
+    trialEndsAt: restaurant.trialEndsAt,
+    subscriptionEndsAt: restaurant.subscriptionEndsAt,
+  };
 
-  return ok(res, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role }, restaurant }, 201);
+  await recordAudit({
+    restaurantId: restaurant.id,
+    userId: user.id,
+    action: 'REGISTER',
+    entity: 'Restaurant',
+    entityId: restaurant.id,
+  });
+
+  return ok(
+    res,
+    {
+      token: signToken(authUser),
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.name,
+        plan: restaurant.plan,
+        subscriptionStatus: restaurant.subscriptionStatus,
+        trialEndsAt: restaurant.trialEndsAt,
+      },
+    },
+    201
+  );
 });
 
 router.post('/login', async (req, res) => {
@@ -54,35 +129,90 @@ router.post('/login', async (req, res) => {
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
 
   const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    include: { restaurant: true }
+    where: {
+      email: normalizeEmail(parsed.data.email),
+    },
+    include: {
+      restaurant: true,
+    },
   });
-  if (!user) return fail(res, 'E-mail ou senha inválidos.', 401);
+
+  if (!user || !user.active || !user.restaurant.active) {
+    return fail(res, 'E-mail ou senha inválidos.', 401);
+  }
 
   const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
   if (!valid) return fail(res, 'E-mail ou senha inválidos.', 401);
 
-  const token = jwt.sign(
-    { userId: user.id, restaurantId: user.restaurantId, role: user.role, name: user.name, email: user.email },
-    env.jwtSecret,
-    { expiresIn: '7d' }
-  );
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  const authUser: AuthUser = {
+    userId: user.id,
+    restaurantId: user.restaurantId,
+    role: user.role as AuthUser['role'],
+    name: user.name,
+    email: user.email,
+    subscriptionStatus: user.restaurant.subscriptionStatus,
+    trialEndsAt: user.restaurant.trialEndsAt,
+    subscriptionEndsAt: user.restaurant.subscriptionEndsAt,
+  };
 
   return ok(res, {
-    token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-    restaurant: user.restaurant
+    token: signToken(authUser),
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    restaurant: {
+      id: user.restaurant.id,
+      name: user.restaurant.name,
+      plan: user.restaurant.plan,
+      subscriptionStatus: user.restaurant.subscriptionStatus,
+      trialEndsAt: user.restaurant.trialEndsAt,
+    },
   });
 });
 
 router.get('/me', authMiddleware, async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.userId },
-    include: { restaurant: true }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      id: req.user.userId,
+      restaurantId: req.user.restaurantId,
+      active: true,
+    },
+    include: {
+      restaurant: true,
+    },
   });
+
   if (!user) return fail(res, 'Usuário não encontrado.', 404);
-  return ok(res, { user: { id: user.id, name: user.name, email: user.email, role: user.role }, restaurant: user.restaurant });
+
+  return ok(res, {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    restaurant: {
+      id: user.restaurant.id,
+      name: user.restaurant.name,
+      document: user.restaurant.document,
+      timezone: user.restaurant.timezone,
+      plan: user.restaurant.plan,
+      subscriptionStatus: user.restaurant.subscriptionStatus,
+      trialEndsAt: user.restaurant.trialEndsAt,
+      subscriptionEndsAt: user.restaurant.subscriptionEndsAt,
+      maxUsers: user.restaurant.maxUsers,
+    },
+  });
 });
 
 export default router;

@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { addDays, addHours } from 'date-fns';
 
 import { prisma } from '../../lib/prisma';
+import { recordAudit } from '../../lib/audit';
 import { fail, ok } from '../../lib/http';
 import { authMiddleware } from '../auth/auth.middleware';
+import { requireActiveSubscription } from '../subscription/subscription.middleware';
 
 const router = Router();
 
@@ -28,12 +30,7 @@ const labelSchema = z.object({
 
 function parseDate(value: string) {
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return new Date();
-  }
-
-  return date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function normalizeText(value: unknown) {
@@ -83,53 +80,41 @@ async function calculateExpiration(input: {
   return addDays(input.openedAt, 3);
 }
 
-router.use((req, res, next) => {
-  const token = req.query.token;
-
-  if (token && typeof token === 'string') {
-    req.headers.authorization = `Bearer ${token}`;
-  }
-
-  next();
-});
-
 router.use(authMiddleware);
+router.use(requireActiveSubscription);
 
 router.get('/dashboard', async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
-  const labels = await prisma.label.findMany({
-    where: {
-      restaurantId: req.user.restaurantId,
-      status: {
-        not: 'CANCELADA',
-      },
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-  });
-
   const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const base = {
+    restaurantId: req.user.restaurantId,
+    status: { not: 'CANCELADA' },
+  };
 
-  const total = labels.length;
-  const expired = labels.filter(
-    (label) => label.expiresAt && label.expiresAt.getTime() < now.getTime()
-  ).length;
-
-  const active = labels.filter(
-    (label) => !label.expiresAt || label.expiresAt.getTime() >= now.getTime()
-  ).length;
-
-  const expiringSoon = labels.filter((label) => {
-    if (!label.expiresAt) return false;
-
-    const diffHours = (label.expiresAt.getTime() - now.getTime()) / 1000 / 60 / 60;
-
-    return diffHours >= 0 && diffHours <= 24;
-  }).length;
-
-  const noExpiration = labels.filter((label) => !label.expiresAt).length;
+  const [total, expired, active, expiringSoon, noExpiration, recent] =
+    await Promise.all([
+      prisma.label.count({ where: base }),
+      prisma.label.count({
+        where: { ...base, expiresAt: { lt: now } },
+      }),
+      prisma.label.count({
+        where: {
+          ...base,
+          OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+        },
+      }),
+      prisma.label.count({
+        where: { ...base, expiresAt: { gte: now, lte: tomorrow } },
+      }),
+      prisma.label.count({ where: { ...base, expiresAt: null } }),
+      prisma.label.findMany({
+        where: base,
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ]);
 
   return ok(res, {
     total,
@@ -137,7 +122,7 @@ router.get('/dashboard', async (req, res) => {
     expired,
     expiringSoon,
     noExpiration,
-    recent: labels.slice(0, 5),
+    recent,
   });
 });
 
@@ -171,6 +156,34 @@ router.post('/', async (req, res) => {
   }
 
   const openedAt = parseDate(parsed.data.openedAt);
+  if (!openedAt) return fail(res, 'Data base inválida.', 422);
+
+  if (parsed.data.productId) {
+    const product = await prisma.product.findFirst({
+      where: {
+        id: parsed.data.productId,
+        active: true,
+        OR: [
+          { restaurantId: req.user.restaurantId },
+          { isGlobal: true },
+        ],
+      },
+    });
+
+    if (!product) return fail(res, 'Produto inválido para esta conta.', 422);
+  }
+
+  if (parsed.data.employeeId) {
+    const employee = await prisma.employee.findFirst({
+      where: {
+        id: parsed.data.employeeId,
+        restaurantId: req.user.restaurantId,
+        active: true,
+      },
+    });
+
+    if (!employee) return fail(res, 'Responsável inválido para esta conta.', 422);
+  }
 
   const expiresAt = await calculateExpiration({
     restaurantId: req.user.restaurantId,
@@ -207,7 +220,38 @@ router.post('/', async (req, res) => {
     },
   });
 
+  await recordAudit({
+    restaurantId: req.user.restaurantId,
+    userId: req.user.userId,
+    action: 'CREATE',
+    entity: 'Label',
+    entityId: label.id,
+    metadata: { type: label.type, productName: label.productName },
+  });
+
   return ok(res, label, 201);
+});
+
+router.post('/by-ids', async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const parsed = z.object({
+    ids: z.array(z.string()).min(1).max(300),
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  }
+
+  const labels = await prisma.label.findMany({
+    where: {
+      id: { in: parsed.data.ids },
+      restaurantId: req.user.restaurantId,
+      status: { not: 'CANCELADA' },
+    },
+  });
+
+  return ok(res, labels);
 });
 
 router.get('/:id/pdf', async (req, res) => {
@@ -217,7 +261,7 @@ router.get('/:id/pdf', async (req, res) => {
 
   const label = await prisma.label.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });
@@ -288,7 +332,7 @@ router.patch('/:id/cancel', async (req, res) => {
 
   const label = await prisma.label.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });
@@ -315,9 +359,13 @@ router.delete('/:id', async (req, res) => {
 
   const permanent = String(req.query.permanent || '') === '1';
 
+  if (permanent && req.user.role !== 'ADMIN') {
+    return fail(res, 'Somente administradores podem excluir definitivamente.', 403);
+  }
+
   const label = await prisma.label.findFirst({
     where: {
-      id: req.params.id,
+      id: String(req.params.id),
       restaurantId: req.user.restaurantId,
     },
   });

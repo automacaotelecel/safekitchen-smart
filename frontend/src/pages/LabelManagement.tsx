@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { CheckSquare, FileText, Printer, Search, Square, X } from 'lucide-react';
-import { API_URL, api, getToken } from '../api/client';
+import { api } from '../api/client';
+import { useNavigate } from 'react-router-dom';
 import type { Label, LabelType } from '../types';
 import { labelTypeName, labelTypes } from '../utils/labels';
 
 type SelectedState = Record<string, number>;
 
 export function LabelManagement() {
+  const navigate = useNavigate();
   const [labels, setLabels] = useState<Label[]>([]);
   const [selected, setSelected] = useState<SelectedState>({});
   const [search, setSearch] = useState('');
@@ -76,7 +78,7 @@ export function LabelManagement() {
     setSelected({});
   }
 
-  async function printSelected() {
+  function printSelected() {
     setError('');
 
     if (selectedItems.length === 0) {
@@ -84,40 +86,13 @@ export function LabelManagement() {
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const token = getToken();
-      const response = await fetch(`${API_URL}/api/labels/batch-pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ items: selectedItems }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || 'Não foi possível gerar o PDF em lote.');
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao gerar PDF em lote.');
-    } finally {
-      setLoading(false);
-    }
+    const items = selectedItems.map((item) => `${item.id}:${item.copies}`).join(',');
+    navigate(`/imprimir-folha?items=${encodeURIComponent(items)}`);
   }
 
   function openSinglePdf(label: Label) {
-    const token = getToken();
     const copies = selected[label.id] || 1;
-    window.open(`${API_URL}/api/labels/${label.id}/pdf?copies=${copies}&token=${token || ''}`, '_blank');
+    navigate(`/imprimir-folha?items=${encodeURIComponent(`${label.id}:${copies}`)}`);
   }
 
   return (

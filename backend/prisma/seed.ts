@@ -84,13 +84,25 @@ async function main() {
     }
   }
 
-  const adminEmail = 'admin@safekitchen.com.br';
-  const hasAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
-  if (!hasAdmin) {
-    const passwordHash = await bcrypt.hash('123456', 10);
+  const shouldCreateDemo = process.env.SEED_DEMO_USER === 'true';
+  const adminEmail = 'admin@safekitchen.local';
+  const hasAdmin = shouldCreateDemo
+    ? await prisma.user.findUnique({ where: { email: adminEmail } })
+    : null;
+
+  if (shouldCreateDemo && !hasAdmin) {
+    const demoPassword = process.env.SEED_DEMO_PASSWORD;
+
+    if (!demoPassword || demoPassword.length < 8) {
+      throw new Error('Defina SEED_DEMO_PASSWORD com pelo menos 8 caracteres.');
+    }
+
+    const passwordHash = await bcrypt.hash(demoPassword, 12);
     await prisma.restaurant.create({
       data: {
         name: 'Restaurante Demonstração',
+        slug: `restaurante-demonstracao-${Date.now()}`,
+        trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         users: { create: { name: 'Administrador', email: adminEmail, passwordHash, role: 'ADMIN' } },
         employees: { createMany: { data: [{ name: 'Administrador' }, { name: 'Cozinha' }, { name: 'Nutrição' }] } }
       }
@@ -100,7 +112,7 @@ async function main() {
 
 main()
   .then(async () => {
-    console.log('Seed finalizado. Login demo: admin@safekitchen.com.br / 123456');
+    console.log('Seed finalizado.');
     await prisma.$disconnect();
   })
   .catch(async (error) => {

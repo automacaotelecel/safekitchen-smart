@@ -7,7 +7,9 @@ import {
   Loader2,
   Sparkles,
   X,
+  ArrowRight,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { api } from '../api/client';
 import type { VisionIdentifyResponse } from '../types';
@@ -58,6 +60,7 @@ async function fileToCompressedDataUrl(file: File): Promise<string> {
 }
 
 export function AiAssistant() {
+  const navigate = useNavigate();
   const [health, setHealth] = useState<AiHealth | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [result, setResult] = useState<VisionIdentifyResponse | null>(null);
@@ -129,6 +132,19 @@ export function AiAssistant() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function useSuggestion() {
+    if (!result) return;
+
+    sessionStorage.setItem(
+      'safekitchen_ai_suggestion',
+      JSON.stringify({
+        ...result.suggestion,
+        matchedProductId: result.matchedProduct?.id || null,
+      })
+    );
+    navigate('/nova-etiqueta');
   }
 
   return (
@@ -269,6 +285,15 @@ export function AiAssistant() {
               <div className="rounded-2xl bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100">
                 {result.warning || result.suggestion.notes}
               </div>
+
+              <button
+                type="button"
+                onClick={useSuggestion}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white"
+              >
+                Usar na nova etiqueta
+                <ArrowRight size={17} />
+              </button>
             </div>
           )}
         </aside>
