@@ -25,14 +25,16 @@ import { Reports } from './pages/Reports';
 // === IMPORTANDO O MENU E A PROTEÇÃO DE TELA ===
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 // === ESTILO GLOBAL ===
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <Routes>
         {/* Página de Login (Pública) */}
         <Route path="/login" element={<Login />} />
         <Route path="/planos" element={<Plans />} />
@@ -74,7 +76,8 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
             </ProtectedRoute>
           }
         />
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </AppErrorBoundary>
   </React.StrictMode>
 );

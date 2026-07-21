@@ -38,8 +38,10 @@ export function Subscription() {
   const [busyPlan, setBusyPlan] = useState<PlanCode | null>(null);
   const [busyAction, setBusyAction] = useState('');
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
 
   async function load(syncSubscription = false) {
+    setLoading(true);
     setMessage('');
     try {
       const paymentId = searchParams.get('payment_id');
@@ -52,12 +54,14 @@ export function Subscription() {
         api<{ plans: CommercialPlan[]; contractTermsVersion: string; contractProvider: ContractProvider | null }>('/api/billing/plans'),
         api<BillingState>('/api/billing/subscription'),
       ]);
-      setPlans(planData.plans);
-      setTermsVersion(planData.contractTermsVersion);
-      setContractProvider(planData.contractProvider);
-      setBilling(state);
+      setPlans(Array.isArray(planData?.plans) ? planData.plans : []);
+      setTermsVersion(typeof planData?.contractTermsVersion === 'string' ? planData.contractTermsVersion : '');
+      setContractProvider(planData?.contractProvider || null);
+      setBilling(state || null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Erro ao carregar contratação.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -156,7 +160,9 @@ export function Subscription() {
         </div>
 
         {!billing?.contractConfigured && <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Configure os dados jurídicos do contrato no backend antes de vender kits.</div>}
-        {message && <div className="mt-5 rounded-2xl bg-safe-soft p-4 text-sm font-bold text-safe-dark">{message}</div>}
+        {message && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">{message}</div>}
+
+        {loading && <div className="mt-5 rounded-2xl bg-safe-soft p-4 text-sm font-bold text-safe-dark">Carregando dados da contratação...</div>}
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <StatusCard icon={kitPaid ? CheckCircle2 : PackageCheck} label="Kit" value={kitPaid ? 'PAGO' : billing?.kitOrder?.status || 'NÃO CONTRATADO'} />
@@ -172,7 +178,13 @@ export function Subscription() {
       {kitPaid && !subscriptionActive && <div className="flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="shrink-0" /><div><p className="font-black">Kit confirmado</p><p className="text-sm">Agora clique abaixo para autorizar a mensalidade e concluir a contratação.</p></div></div>}
       {searchParams.get('kit') === 'failure' && <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertTriangle /><p className="font-bold">O pagamento do kit não foi concluído. Você pode tentar novamente.</p></div>}
 
-      {!subscriptionActive && <PlanCards plans={visiblePlans} busyPlan={busyPlan} onSelect={selectPlan} actionLabel={() => kitPaid ? 'Autorizar mensalidade' : 'Contratar kit'} />}
+      {!loading && !subscriptionActive && visiblePlans.length > 0 && <PlanCards plans={visiblePlans} busyPlan={busyPlan} onSelect={selectPlan} actionLabel={() => kitPaid ? 'Autorizar mensalidade' : 'Contratar kit'} />}
+
+      {!loading && !subscriptionActive && visiblePlans.length === 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center font-bold text-amber-900">
+          Não foi possível encontrar um plano disponível para esta conta. Atualize os pagamentos ou fale com o suporte.
+        </div>
+      )}
 
       {selectedPlan && <ContractModal plan={selectedPlan} provider={contractProvider} form={form} setForm={setForm} termsVersion={termsVersion} busy={busyPlan !== null} onClose={() => setSelectedPlan(null)} onSubmit={createKitCheckout} />}
     </div>

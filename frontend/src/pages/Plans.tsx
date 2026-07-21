@@ -15,7 +15,7 @@ export function Plans() {
 
   useEffect(() => {
     api<{ plans: CommercialPlan[] }>('/api/billing/plans')
-      .then((data) => setPlans(data.plans))
+      .then((data) => setPlans(Array.isArray(data?.plans) ? data.plans : []))
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Erro ao carregar planos.'))
       .finally(() => setLoading(false));
   }, []);
@@ -42,6 +42,10 @@ export function Plans() {
           <p className="rounded-2xl border border-red-200 bg-red-50 p-5 text-center font-bold text-red-700">{error}</p>
         ) : loading ? (
           <p className="py-20 text-center font-bold text-slate-500">Carregando planos...</p>
+        ) : plans.length === 0 ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center font-bold text-amber-800">
+            Nenhum plano está disponível no momento. Atualize a página ou fale com o suporte.
+          </p>
         ) : (
           <PlanCards
             plans={plans}

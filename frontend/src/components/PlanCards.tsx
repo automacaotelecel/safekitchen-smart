@@ -1,8 +1,16 @@
-import { Check, PackageCheck, Sparkles, Zap } from 'lucide-react';
+import { Check, CreditCard, PackageCheck, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 
 import type { CommercialPlan, PlanCode } from '../types';
 
-const icons = { START: Zap, PRO: Sparkles };
+const icons: Partial<Record<PlanCode, LucideIcon>> = { START: Zap, PRO: Sparkles };
+
+function formatMoney(value: unknown, currency: string) {
+  const amount = typeof value === 'number' && Number.isFinite(value) ? value / 100 : 0;
+  return amount.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: currency || 'BRL',
+  });
+}
 
 export function PlanCards({
   plans,
@@ -19,8 +27,10 @@ export function PlanCards({
 }) {
   return (
     <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
-      {plans.map((plan) => {
-        const Icon = icons[plan.code];
+      {(Array.isArray(plans) ? plans : []).filter(Boolean).map((plan) => {
+        const Icon = icons[plan.code] || CreditCard;
+        const kitItems = Array.isArray(plan.kitItems) ? plan.kitItems : [];
+        const features = Array.isArray(plan.features) ? plan.features : [];
         const selected = currentPlan === plan.code;
         return (
           <article
@@ -54,26 +64,21 @@ export function PlanCards({
             <div className="mt-5 rounded-2xl bg-safe-soft p-4">
               <p className="text-xs font-black uppercase tracking-wider text-slate-500">Kit de implantação</p>
               <p className="mt-1 text-3xl font-black text-safe-dark">
-                {(plan.setupAmountCents / 100).toLocaleString('pt-BR', {
-                  style: 'currency', currency: plan.currency,
-                })}
+                {formatMoney(plan.setupAmountCents, plan.currency)}
               </p>
             </div>
             <p className="mt-4 text-4xl font-black text-safe-dark">
-              {(plan.amountCents / 100).toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: plan.currency,
-              })}
+              {formatMoney(plan.amountCents, plan.currency)}
               <span className="text-sm font-bold text-slate-500">/mês</span>
             </p>
             <div className="mt-6 border-t border-slate-100 pt-5">
               <p className="mb-3 flex items-center gap-2 text-sm font-black text-safe-dark"><PackageCheck size={18} className="text-safe-green" /> Equipamentos incluídos</p>
               <div className="space-y-3 text-sm font-semibold text-slate-600">
-                {plan.kitItems.map((item) => <div key={item} className="flex items-start gap-2"><Check size={17} className="mt-0.5 shrink-0 text-safe-green" /><span>{item}</span></div>)}
+                {kitItems.map((item) => <div key={item} className="flex items-start gap-2"><Check size={17} className="mt-0.5 shrink-0 text-safe-green" /><span>{item}</span></div>)}
               </div>
             </div>
             <div className="mt-6 space-y-3 text-sm font-semibold text-slate-600">
-              {plan.features.map((feature) => (
+              {features.map((feature) => (
                 <div key={feature} className="flex items-start gap-2">
                   <Check size={17} className="mt-0.5 shrink-0 text-safe-green" />
                   <span>{feature}</span>
