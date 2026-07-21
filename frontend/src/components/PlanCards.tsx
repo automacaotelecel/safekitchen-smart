@@ -1,8 +1,8 @@
-import { Check, Crown, Sparkles, Zap } from 'lucide-react';
+import { Check, PackageCheck, Sparkles, Zap } from 'lucide-react';
 
 import type { CommercialPlan, PlanCode } from '../types';
 
-const icons = { ESSENTIAL: Zap, PROFESSIONAL: Sparkles, PREMIUM: Crown };
+const icons = { START: Zap, PRO: Sparkles };
 
 export function PlanCards({
   plans,
@@ -18,7 +18,7 @@ export function PlanCards({
   actionLabel: (plan: CommercialPlan) => string;
 }) {
   return (
-    <div className="grid gap-5 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
       {plans.map((plan) => {
         const Icon = icons[plan.code];
         const selected = currentPlan === plan.code;
@@ -47,16 +47,31 @@ export function PlanCards({
               )}
             </div>
             <h2 className="mt-5 text-2xl font-black text-safe-dark">{plan.name}</h2>
+            <p className="mt-1 text-xs font-black uppercase tracking-wider text-safe-green">{plan.audience}</p>
             <p className="mt-2 min-h-12 text-sm font-medium leading-6 text-slate-500">
               {plan.description}
             </p>
-            <p className="mt-5 text-4xl font-black text-safe-dark">
+            <div className="mt-5 rounded-2xl bg-safe-soft p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-slate-500">Kit de implantação</p>
+              <p className="mt-1 text-3xl font-black text-safe-dark">
+                {(plan.setupAmountCents / 100).toLocaleString('pt-BR', {
+                  style: 'currency', currency: plan.currency,
+                })}
+              </p>
+            </div>
+            <p className="mt-4 text-4xl font-black text-safe-dark">
               {(plan.amountCents / 100).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: plan.currency,
               })}
               <span className="text-sm font-bold text-slate-500">/mês</span>
             </p>
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <p className="mb-3 flex items-center gap-2 text-sm font-black text-safe-dark"><PackageCheck size={18} className="text-safe-green" /> Equipamentos incluídos</p>
+              <div className="space-y-3 text-sm font-semibold text-slate-600">
+                {plan.kitItems.map((item) => <div key={item} className="flex items-start gap-2"><Check size={17} className="mt-0.5 shrink-0 text-safe-green" /><span>{item}</span></div>)}
+              </div>
+            </div>
             <div className="mt-6 space-y-3 text-sm font-semibold text-slate-600">
               {plan.features.map((feature) => (
                 <div key={feature} className="flex items-start gap-2">

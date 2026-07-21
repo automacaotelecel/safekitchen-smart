@@ -1,11 +1,13 @@
 import { env } from '../../config/env';
 
-export type PlanCode = 'ESSENTIAL' | 'PROFESSIONAL' | 'PREMIUM';
+export type PlanCode = 'START' | 'PRO';
 
 export type CommercialPlan = {
   code: PlanCode;
   name: string;
+  audience: string;
   description: string;
+  setupAmountCents: number;
   amountCents: number;
   currency: 'BRL';
   interval: 'MONTH';
@@ -14,6 +16,7 @@ export type CommercialPlan = {
   maxLabelsPerMonth: number | null;
   maxAiAnalysesPerMonth: number;
   maxDevices: number;
+  kitItems: string[];
   features: string[];
 };
 
@@ -24,17 +27,26 @@ function cents(value: number) {
 export function getCommercialPlans(): CommercialPlan[] {
   return [
     {
-      code: 'ESSENTIAL',
-      name: 'Essencial',
-      description: 'Para operações que querem substituir controles em papel.',
-      amountCents: cents(env.planEssentialPrice),
+      code: 'START',
+      name: 'SKS Start',
+      audience: 'Pequenos negócios',
+      description: 'Kit de implantação para começar com etiquetas e controle de temperatura manual.',
+      setupAmountCents: cents(env.planStartSetupPrice),
+      amountCents: cents(env.planStartMonthlyPrice),
       currency: 'BRL',
       interval: 'MONTH',
       highlighted: false,
       maxUsers: 5,
-      maxLabelsPerMonth: 500,
-      maxAiAnalysesPerMonth: 30,
-      maxDevices: 1,
+      maxLabelsPerMonth: 1_000,
+      maxAiAnalysesPerMonth: 100,
+      maxDevices: 2,
+      kitItems: [
+        'Impressora Nimbot B21',
+        '2 rolos de etiquetas',
+        '2 termômetros simples para equipamentos',
+        '1 termômetro simples de espeto',
+        'Registro de temperatura manual',
+      ],
       features: [
         'Etiquetas e histórico',
         'Documentos e vencimentos',
@@ -43,38 +55,28 @@ export function getCommercialPlans(): CommercialPlan[] {
       ],
     },
     {
-      code: 'PROFESSIONAL',
-      name: 'Profissional',
-      description: 'Para cozinhas com equipe maior e uso frequente de IA.',
-      amountCents: cents(env.planProfessionalPrice),
+      code: 'PRO',
+      name: 'SKS Pro',
+      audience: 'Médios e grandes negócios',
+      description: 'Implantação completa com equipamentos integrados e automação de temperatura.',
+      setupAmountCents: cents(env.planProSetupPrice),
+      amountCents: cents(env.planProMonthlyPrice),
       currency: 'BRL',
       interval: 'MONTH',
       highlighted: true,
-      maxUsers: 15,
-      maxLabelsPerMonth: 3_000,
-      maxAiAnalysesPerMonth: 250,
-      maxDevices: 5,
-      features: [
-        'Tudo do plano Essencial',
-        'Mais usuários e etiquetas',
-        '250 análises de imagem por mês',
-        'Até 5 dispositivos de temperatura',
-      ],
-    },
-    {
-      code: 'PREMIUM',
-      name: 'Premium',
-      description: 'Para operações intensivas e redes em crescimento.',
-      amountCents: cents(env.planPremiumPrice),
-      currency: 'BRL',
-      interval: 'MONTH',
-      highlighted: false,
-      maxUsers: 50,
+      maxUsers: 25,
       maxLabelsPerMonth: null,
       maxAiAnalysesPerMonth: 1_000,
       maxDevices: 25,
+      kitItems: [
+        'Impressora Zebra',
+        '2 rolos de etiquetas',
+        '2 termômetros automáticos integrados',
+        '1 termômetro inteligente de espeto',
+        'Registro de temperatura automático',
+      ],
       features: [
-        'Tudo do plano Profissional',
+        'Tudo do SKS Start',
         'Etiquetas sem limite mensal',
         '1.000 análises de imagem por mês',
         'Até 25 dispositivos de temperatura',
@@ -84,10 +86,17 @@ export function getCommercialPlans(): CommercialPlan[] {
 }
 
 export function getCommercialPlan(code: string) {
-  return getCommercialPlans().find((plan) => plan.code === code.toUpperCase());
+  const normalized = code.toUpperCase();
+  const compatibilityCode =
+    normalized === 'ESSENTIAL'
+      ? 'START'
+      : ['PROFESSIONAL', 'PREMIUM'].includes(normalized)
+        ? 'PRO'
+        : normalized;
+  return getCommercialPlans().find((plan) => plan.code === compatibilityCode);
 }
 
 export function planForAccess(code: string) {
-  if (code === 'TRIAL') return getCommercialPlan('PROFESSIONAL')!;
-  return getCommercialPlan(code) || getCommercialPlan('ESSENTIAL')!;
+  if (code === 'TRIAL') return getCommercialPlan('PRO')!;
+  return getCommercialPlan(code) || getCommercialPlan('START')!;
 }

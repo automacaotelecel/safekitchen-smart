@@ -35,7 +35,7 @@ export function Plans() {
           <p className="text-xs font-black uppercase tracking-[0.26em] text-safe-green">Planos SafeKitchen</p>
           <h1 className="mt-3 text-4xl font-black sm:text-5xl">Escolha o plano da sua operação</h1>
           <p className="mx-auto mt-4 max-w-2xl text-base font-medium leading-7 text-slate-600">
-            Comece com 7 dias de teste. Depois, contrate uma assinatura mensal e continue com seus registros preservados.
+            Escolha o kit ideal, pague a implantação e mantenha o sistema com uma mensalidade recorrente. Equipamentos adicionais podem ser incluídos sob orçamento.
           </p>
         </section>
         {error ? (

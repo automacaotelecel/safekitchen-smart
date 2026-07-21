@@ -9,6 +9,7 @@ import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
 import { getCommercialPlan, type PlanCode } from './plans';
 import { createSystemNotification } from '../notifications/notifications.service';
+import { activateContractIfEligible } from './contracts.service';
 
 function client(): MercadoPagoConfig {
   if (!env.mercadoPagoAccessToken) {
@@ -47,6 +48,13 @@ export async function createMercadoPagoCheckout(input: {
 }) {
   const plan = getCommercialPlan(input.planCode);
   if (!plan) throw new Error('Plano inválido.');
+
+  const approvedKit = await prisma.kitOrder.findFirst({
+    where: { restaurantId: input.restaurantId, planCode: plan.code, status: 'APPROVED' },
+  });
+  if (!approvedKit) {
+    throw new Error('Confirme primeiro o pagamento do kit para autorizar a mensalidade.');
+  }
 
   const current = await prisma.subscription.findUnique({
     where: { restaurantId: input.restaurantId },
@@ -143,7 +151,10 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     throw new Error('Assinatura sem referência válida para uma conta do SafeKitchen.');
   }
 
-  const restaurant = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+  const [restaurant, approvedKit] = await Promise.all([
+    prisma.restaurant.findUnique({ where: { id: restaurantId } }),
+    prisma.kitOrder.findFirst({ where: { restaurantId, planCode: plan.code, status: 'APPROVED' } }),
+  ]);
   if (!restaurant) throw new Error('Conta vinculada à assinatura não encontrada.');
 
   const status = providerStatus(response.status);
@@ -153,7 +164,14 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       restaurant.trialEndsAt &&
       restaurant.trialEndsAt >= now
   );
-  const accountStatus = status === 'PENDING' && trialStillActive ? 'TRIALING' : status;
+  const accountStatus =
+    status === 'ACTIVE' && approvedKit
+      ? 'ACTIVE'
+      : status === 'ACTIVE'
+        ? 'PENDING_KIT'
+        : status === 'PENDING' && trialStillActive
+          ? 'TRIALING'
+          : status;
 
   await prisma.$transaction([
     prisma.subscription.upsert({
@@ -193,8 +211,8 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
-        plan: status === 'ACTIVE' ? plan.code : restaurant.plan,
-        maxUsers: status === 'ACTIVE' ? plan.maxUsers : restaurant.maxUsers,
+        plan: status === 'ACTIVE' && approvedKit ? plan.code : restaurant.plan,
+        maxUsers: status === 'ACTIVE' && approvedKit ? plan.maxUsers : restaurant.maxUsers,
         subscriptionStatus: accountStatus,
         subscriptionEndsAt:
           status === 'ACTIVE'
@@ -216,6 +234,7 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       link: '/assinatura',
       dedupeKey: `billing:${providerSubscriptionId}:active`,
     });
+    await activateContractIfEligible(restaurantId);
   } else if (status === 'CANCELED') {
     await createSystemNotification({
       restaurantId,
@@ -246,16 +265,11 @@ export async function syncMercadoPagoInvoice(invoiceId: string) {
   );
 
   if (approved) {
-    await prisma.$transaction([
-      prisma.subscription.update({
-        where: { id: subscription.id },
-        data: { status: 'ACTIVE' },
-      }),
-      prisma.restaurant.update({
-        where: { id: subscription.restaurantId },
-        data: { subscriptionStatus: 'ACTIVE', subscriptionEndsAt: null },
-      }),
-    ]);
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: 'ACTIVE' },
+    });
+    await activateContractIfEligible(subscription.restaurantId);
     await createSystemNotification({
       restaurantId: subscription.restaurantId,
       type: 'PAYMENT_APPROVED',
@@ -294,40 +308,8 @@ export async function changeMercadoPagoPlan(input: {
   restaurantId: string;
   planCode: PlanCode;
 }) {
-  const plan = getCommercialPlan(input.planCode);
-  if (!plan) throw new Error('Plano inválido.');
-
-  const subscription = await prisma.subscription.findUnique({
-    where: { restaurantId: input.restaurantId },
-  });
-  if (!subscription?.providerSubscriptionId || subscription.status !== 'ACTIVE') {
-    throw new Error('Não existe uma assinatura ativa para alterar.');
-  }
-
-  await new PreApproval(client()).update({
-    id: subscription.providerSubscriptionId,
-    body: {
-      reason: `SafeKitchen Smart - Plano ${plan.name}`,
-      external_reference: `${input.restaurantId}:${plan.code}`,
-      auto_recurring: {
-        transaction_amount: plan.amountCents / 100,
-        currency_id: 'BRL',
-      },
-    },
-  });
-
-  await prisma.$transaction([
-    prisma.subscription.update({
-      where: { id: subscription.id },
-      data: { planCode: plan.code, amountCents: plan.amountCents },
-    }),
-    prisma.restaurant.update({
-      where: { id: input.restaurantId },
-      data: { plan: plan.code, maxUsers: plan.maxUsers },
-    }),
-  ]);
-
-  return prisma.subscription.findUnique({ where: { restaurantId: input.restaurantId } });
+  void input;
+  throw new Error('A troca entre kits exige ajuste de equipamentos. Solicite o upgrade ao suporte comercial.');
 }
 
 export async function cancelMercadoPagoSubscription(restaurantId: string) {

@@ -35,6 +35,8 @@ model Restaurant {
   auditLogs           AuditLog[]
   aiUsage             AiUsage[]
   subscription        Subscription?
+  kitOrders           KitOrder[]
+  contracts           CommercialContract[]
   paymentEvents       PaymentEvent[]
   notifications       Notification[]
 
@@ -62,6 +64,7 @@ model User {
   aiUsage             AiUsage[]
   notifications       Notification[]
   notificationPreference NotificationPreference?
+  acceptedContracts      CommercialContract[]
 
   @@index([restaurantId])
   @@index([restaurantId, active])
@@ -340,6 +343,69 @@ model Subscription {
 
   @@index([status])
   @@index([providerSubscriptionId])
+}
+
+model KitOrder {
+  id                   String    @id @default(cuid())
+  restaurantId         String
+  planCode             String
+  status               String    @default("PENDING")
+  provider              String    @default("MERCADO_PAGO")
+  providerPreferenceId String?   @unique
+  providerPaymentId    String?   @unique
+  checkoutUrl          String?
+  amountCents          Int
+  currency             String    @default("BRL")
+  payerEmail           String
+  customerName         String
+  customerDocument     String
+  customerPhone        String?
+  deliveryAddress      Json
+  paidAt               DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  restaurant Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  contract   CommercialContract?
+
+  @@index([restaurantId, status, createdAt])
+  @@index([providerPaymentId])
+}
+
+model CommercialContract {
+  id                 String    @id @default(cuid())
+  restaurantId       String
+  kitOrderId         String    @unique
+  acceptedById       String
+  contractNumber     String    @unique
+  version            String
+  status             String    @default("ACCEPTED_PENDING_PAYMENT")
+  customerName       String
+  customerEmail      String
+  customerDocument   String
+  customerPhone      String?
+  planCode           String
+  setupAmountCents   Int
+  monthlyAmountCents Int
+  currency           String    @default("BRL")
+  termsSnapshot      Json
+  contentHash        String
+  acceptedAt         DateTime
+  acceptedIp         String?
+  acceptedUserAgent  String?
+  activatedAt        DateTime?
+  emailedAt          DateTime?
+  emailProviderId    String?
+  emailError         String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kitOrder   KitOrder   @relation(fields: [kitOrderId], references: [id], onDelete: Cascade)
+  acceptedBy User       @relation(fields: [acceptedById], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, status, createdAt])
+  @@index([customerEmail])
 }
 
 model PaymentEvent {

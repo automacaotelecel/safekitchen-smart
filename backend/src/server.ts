@@ -132,6 +132,7 @@ app.get('/health', async (_req, res) => {
     storageEnabled: env.storageEnabled,
     billingEnabled: env.mercadoPagoEnabled,
     emailEnabled: env.emailEnabled,
+    contractEnabled: env.contractProviderConfigured,
   });
 });
 

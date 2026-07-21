@@ -251,12 +251,14 @@ export type ComplianceRecord = {
   createdAt: string;
 };
 
-export type PlanCode = 'ESSENTIAL' | 'PROFESSIONAL' | 'PREMIUM';
+export type PlanCode = 'START' | 'PRO';
 
 export type CommercialPlan = {
   code: PlanCode;
   name: string;
+  audience: string;
   description: string;
+  setupAmountCents: number;
   amountCents: number;
   currency: 'BRL';
   interval: 'MONTH';
@@ -265,6 +267,7 @@ export type CommercialPlan = {
   maxLabelsPerMonth: number | null;
   maxAiAnalysesPerMonth: number;
   maxDevices: number;
+  kitItems: string[];
   features: string[];
 };
 
@@ -278,6 +281,29 @@ export type SubscriptionInfo = {
   currency: string;
   currentPeriodEnd?: string | null;
   canceledAt?: string | null;
+};
+
+export type KitOrderInfo = {
+  id: string;
+  planCode: PlanCode;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REFUNDED' | 'ERROR' | string;
+  checkoutUrl?: string | null;
+  amountCents: number;
+  currency: string;
+  providerPaymentId?: string | null;
+  paidAt?: string | null;
+};
+
+export type CommercialContractInfo = {
+  id: string;
+  contractNumber: string;
+  version: string;
+  status: string;
+  customerEmail: string;
+  acceptedAt: string;
+  activatedAt?: string | null;
+  emailedAt?: string | null;
+  emailError?: string | null;
 };
 
 export type AppNotification = {
