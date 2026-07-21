@@ -7,6 +7,7 @@ import { recordAudit } from '../../lib/audit';
 import { fail, ok } from '../../lib/http';
 import { authMiddleware } from '../auth/auth.middleware';
 import { requireActiveSubscription } from '../subscription/subscription.middleware';
+import { assertLabelQuota } from '../billing/entitlements';
 import {
   generateBatchLabelsPdf,
   generateLabelPdf,
@@ -15,7 +16,16 @@ import {
 const router = Router();
 
 const labelSchema = z.object({
-  type: z.string().min(2),
+  type: z.enum([
+    'PRODUTO_ABERTO',
+    'PRODUCAO',
+    'DESCONGELAMENTO_DESSALGUE',
+    'ARMAZENAMENTO_CARNES',
+    'REEMBALAGEM',
+    'AMOSTRAS',
+    'NAO_CONFORME',
+    'PRODUTO_QUIMICO',
+  ]),
   productId: z.string().optional().nullable(),
   employeeId: z.string().optional().nullable(),
   productName: z.string().min(2, 'Informe o produto.'),
@@ -24,7 +34,7 @@ const labelSchema = z.object({
   batch: z.string().optional().nullable(),
   conservationMode: z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']).default('REFRIGERADO'),
   openedAt: z.string().min(1),
-  responsibleName: z.string().min(2, 'Informe o responsÃ¡vel.'),
+  responsibleName: z.string().min(2, 'Informe o responsável.'),
   quantity: z.string().optional().nullable(),
   observations: z.string().optional().nullable(),
   manualValidityValue: z.number().optional().nullable(),
@@ -81,14 +91,14 @@ async function calculateExpiration(input: {
     }
   }
 
-  return addDays(input.openedAt, 3);
+  return undefined;
 }
 
 router.use(authMiddleware);
 router.use(requireActiveSubscription);
 
 router.get('/dashboard', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -131,7 +141,7 @@ router.get('/dashboard', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const includeCanceled = String(req.query.includeCanceled || '') === '1';
   const limit = Number(req.query.limit || 100);
@@ -151,16 +161,22 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = labelSchema.safeParse(req.body);
 
   if (!parsed.success) {
-    return fail(res, 'Dados invÃ¡lidos.', 422, parsed.error.flatten());
+    return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  }
+
+  try {
+    await assertLabelQuota(req.user.restaurantId);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Limite do plano atingido.', 409);
   }
 
   const openedAt = parseDate(parsed.data.openedAt);
-  if (!openedAt) return fail(res, 'Data base invÃ¡lida.', 422);
+  if (!openedAt) return fail(res, 'Data base inválida.', 422);
 
   if (parsed.data.productId) {
     const product = await prisma.product.findFirst({
@@ -174,7 +190,7 @@ router.post('/', async (req, res) => {
       },
     });
 
-    if (!product) return fail(res, 'Produto invÃ¡lido para esta conta.', 422);
+    if (!product) return fail(res, 'Produto inválido para esta conta.', 422);
   }
 
   if (parsed.data.employeeId) {
@@ -186,7 +202,7 @@ router.post('/', async (req, res) => {
       },
     });
 
-    if (!employee) return fail(res, 'ResponsÃ¡vel invÃ¡lido para esta conta.', 422);
+    if (!employee) return fail(res, 'Responsável inválido para esta conta.', 422);
   }
 
   const expiresAt = await calculateExpiration({
@@ -198,6 +214,14 @@ router.post('/', async (req, res) => {
     manualValidityValue: parsed.data.manualValidityValue,
     manualValidityUnit: parsed.data.manualValidityUnit,
   });
+
+  if (expiresAt === undefined) {
+    return fail(
+      res,
+      'Este produto não possui regra de validade. Informe a validade manualmente ou configure uma regra técnica.',
+      422
+    );
+  }
 
   const normalizedExtraData = parsed.data.extraData || {};
 
@@ -237,14 +261,14 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/by-ids', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const parsed = z.object({
     ids: z.array(z.string()).min(1).max(300),
   }).safeParse(req.body);
 
   if (!parsed.success) {
-    return fail(res, 'Dados invÃ¡lidos.', 422, parsed.error.flatten());
+    return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
   }
 
   const labels = await prisma.label.findMany({
@@ -259,7 +283,7 @@ router.post('/by-ids', async (req, res) => {
 });
 
 router.get('/:id/pdf', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const label = await prisma.label.findFirst({
     where: {
@@ -268,7 +292,7 @@ router.get('/:id/pdf', async (req, res) => {
     },
   });
 
-  if (!label) return fail(res, 'Etiqueta nÃ£o encontrada.', 404);
+  if (!label) return fail(res, 'Etiqueta não encontrada.', 404);
 
   const buffer = await generateLabelPdf(label as any);
 
@@ -279,7 +303,7 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 router.post('/batch-pdf', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const schema = z.object({
     items: z.array(
@@ -293,7 +317,7 @@ router.post('/batch-pdf', async (req, res) => {
   const parsed = schema.safeParse(req.body);
 
   if (!parsed.success) {
-    return fail(res, 'Dados invÃ¡lidos.', 422, parsed.error.flatten());
+    return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
   }
 
   const ids = parsed.data.items.map((item) => item.id);
@@ -328,7 +352,7 @@ router.post('/batch-pdf', async (req, res) => {
 });
 
 router.patch('/:id/cancel', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const label = await prisma.label.findFirst({
     where: {
@@ -337,7 +361,7 @@ router.patch('/:id/cancel', async (req, res) => {
     },
   });
 
-  if (!label) return fail(res, 'Etiqueta nÃ£o encontrada.', 404);
+  if (!label) return fail(res, 'Etiqueta não encontrada.', 404);
 
   const updated = await prisma.label.update({
     where: {
@@ -355,7 +379,7 @@ router.patch('/:id/cancel', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  if (!req.user) return fail(res, 'NÃ£o autenticado.', 401);
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
 
   const permanent = String(req.query.permanent || '') === '1';
 
@@ -370,7 +394,7 @@ router.delete('/:id', async (req, res) => {
     },
   });
 
-  if (!label) return fail(res, 'Etiqueta nÃ£o encontrada.', 404);
+  if (!label) return fail(res, 'Etiqueta não encontrada.', 404);
 
   if (permanent) {
     await prisma.label.delete({
@@ -382,7 +406,7 @@ router.delete('/:id', async (req, res) => {
     return ok(res, {
       deleted: true,
       canceled: false,
-      message: 'Etiqueta excluÃ­da definitivamente.',
+      message: 'Etiqueta excluída definitivamente.',
     });
   }
 

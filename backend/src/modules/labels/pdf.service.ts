@@ -25,7 +25,7 @@ function brDate(value?: Date | string | null) {
 
   if (Number.isNaN(date.getTime())) return '—';
 
-  return date.toLocaleDateString('pt-BR');
+  return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 function brDateTime(value?: Date | string | null) {
@@ -36,6 +36,7 @@ function brDateTime(value?: Date | string | null) {
   if (Number.isNaN(date.getTime())) return '—';
 
   return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     dateStyle: 'short',
     timeStyle: 'short',
   });

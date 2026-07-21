@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   CheckCircle2,
@@ -19,8 +19,9 @@ type LoginResponse = {
 
 export function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [registering, setRegistering] = useState(false);
+  const [registering, setRegistering] = useState(searchParams.get('register') === '1');
   const [restaurantName, setRestaurantName] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -245,6 +246,13 @@ export function Login() {
                 : registering ? 'Criar conta e iniciar teste' : 'Entrar'}
               <ArrowRight size={18} />
             </button>
+
+            <Link
+              to="/planos"
+              className="mt-3 block text-center text-xs font-bold text-white/60 transition hover:text-[#19F5C7]"
+            >
+              Conhecer planos e recursos
+            </Link>
 
             <button
               type="button"

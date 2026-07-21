@@ -1,8 +1,6 @@
 import { ChangeEvent, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
   Camera,
-  CheckCircle2,
   ImagePlus,
   Loader2,
   Sparkles,
@@ -175,26 +173,6 @@ export function AiAssistant() {
           </button>
         </div>
 
-        <div
-          className={`mt-4 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm font-bold ${
-            health?.enabled
-              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100'
-              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-100'
-          }`}
-        >
-          {checking ? (
-            <Loader2 className="mt-0.5 animate-spin" size={18} />
-          ) : health?.enabled ? (
-            <CheckCircle2 className="mt-0.5" size={18} />
-          ) : (
-            <AlertTriangle className="mt-0.5" size={18} />
-          )}
-
-          <div>
-            <p>{checking ? 'Verificando IA...' : health?.message || 'IA não verificada.'}</p>
-            {health?.model && <p className="mt-1 text-xs opacity-80">Modelo: {health.model}</p>}
-          </div>
-        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_420px]">

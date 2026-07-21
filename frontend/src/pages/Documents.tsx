@@ -25,12 +25,12 @@ function localDateToIso(value: string) {
   return value ? new Date(`${value}T12:00:00`).toISOString() : null;
 }
 
-function expiryState(value?: string | null) {
+function expiryState(value?: string | null, reminderDays = 30) {
   if (!value) return { label: 'Sem vencimento', classes: 'bg-slate-100 text-slate-600' };
 
   const days = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
   if (days < 0) return { label: 'Vencido', classes: 'bg-red-100 text-red-700' };
-  if (days <= 30) return { label: `Vence em ${days} dia(s)`, classes: 'bg-amber-100 text-amber-700' };
+  if (days <= reminderDays) return { label: `Vence em ${days} dia(s)`, classes: 'bg-amber-100 text-amber-700' };
   return { label: 'Vigente', classes: 'bg-emerald-100 text-emerald-700' };
 }
 
@@ -289,7 +289,7 @@ export function Documents() {
           ) : (
             <div className="mt-4 space-y-3">
               {documents.map((document) => {
-                const state = expiryState(document.expiresAt);
+                const state = expiryState(document.expiresAt, document.reminderDays);
 
                 return (
                   <article key={document.id} className="rounded-2xl border border-slate-200 p-4">
@@ -368,4 +368,3 @@ function Input({
 }
 
 export default Documents;
-

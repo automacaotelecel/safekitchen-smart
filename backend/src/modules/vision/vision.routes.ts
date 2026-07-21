@@ -6,6 +6,7 @@ import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware } from '../auth/auth.middleware';
 import { requireActiveSubscription } from '../subscription/subscription.middleware';
+import { assertAiQuota } from '../billing/entitlements';
 
 const router = Router();
 
@@ -436,6 +437,12 @@ router.post('/identify-product', async (req, res) => {
 
   if (!parsed.success) {
     return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  }
+
+  try {
+    await assertAiQuota(req.user.restaurantId);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Limite do plano atingido.', 409);
   }
 
   try {

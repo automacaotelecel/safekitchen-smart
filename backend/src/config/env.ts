@@ -9,6 +9,7 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória.'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET deve ter pelo menos 16 caracteres.'),
   FRONTEND_URL: z.string().default('http://localhost:5174'),
+  BACKEND_URL: z.string().default('http://localhost:3333'),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   GEMINI_FALLBACK_MODELS: z.string().default('gemini-2.5-flash-lite'),
@@ -29,6 +30,16 @@ const schema = z.object({
     .min(1024)
     .max(100 * 1024 * 1024)
     .default(20 * 1024 * 1024),
+  MERCADO_PAGO_ACCESS_TOKEN: z.string().default(''),
+  MERCADO_PAGO_WEBHOOK_SECRET: z.string().default(''),
+  PLAN_ESSENTIAL_PRICE: z.coerce.number().positive().default(79.9),
+  PLAN_PROFESSIONAL_PRICE: z.coerce.number().positive().default(149.9),
+  PLAN_PREMIUM_PRICE: z.coerce.number().positive().default(249.9),
+  RESEND_API_KEY: z.string().default(''),
+  EMAIL_FROM: z.string().default('SafeKitchen Smart <alertas@safekitchensmart.com.br>'),
+  ALERT_JOB_SECRET: z.string().default(''),
+  ALERT_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+  DEVICE_OFFLINE_MINUTES: z.coerce.number().int().min(5).max(10080).default(60),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -58,6 +69,7 @@ export const env = {
   databaseUrl: parsed.data.DATABASE_URL,
   jwtSecret: parsed.data.JWT_SECRET,
   frontendUrl: parsed.data.FRONTEND_URL,
+  backendUrl: parsed.data.BACKEND_URL.replace(/\/$/, ''),
   geminiApiKey: parsed.data.GEMINI_API_KEY,
   geminiModel: parsed.data.GEMINI_MODEL,
   geminiFallbackModels: parsed.data.GEMINI_FALLBACK_MODELS
@@ -74,5 +86,16 @@ export const env = {
   s3ForcePathStyle: parsed.data.S3_FORCE_PATH_STYLE,
   maxDocumentBytes: parsed.data.MAX_DOCUMENT_BYTES,
   storageEnabled,
+  mercadoPagoAccessToken: parsed.data.MERCADO_PAGO_ACCESS_TOKEN,
+  mercadoPagoWebhookSecret: parsed.data.MERCADO_PAGO_WEBHOOK_SECRET,
+  mercadoPagoEnabled: Boolean(parsed.data.MERCADO_PAGO_ACCESS_TOKEN),
+  planEssentialPrice: parsed.data.PLAN_ESSENTIAL_PRICE,
+  planProfessionalPrice: parsed.data.PLAN_PROFESSIONAL_PRICE,
+  planPremiumPrice: parsed.data.PLAN_PREMIUM_PRICE,
+  resendApiKey: parsed.data.RESEND_API_KEY,
+  emailFrom: parsed.data.EMAIL_FROM,
+  emailEnabled: Boolean(parsed.data.RESEND_API_KEY),
+  alertJobSecret: parsed.data.ALERT_JOB_SECRET,
+  alertIntervalMinutes: parsed.data.ALERT_INTERVAL_MINUTES,
+  deviceOfflineMinutes: parsed.data.DEVICE_OFFLINE_MINUTES,
 };
-

@@ -16,6 +16,7 @@ import {
   requireActiveSubscription,
   subscriptionIsActive,
 } from '../subscription/subscription.middleware';
+import { assertDeviceQuota } from '../billing/entitlements';
 
 const router = Router();
 
@@ -413,6 +414,12 @@ router.post('/devices', requireRole('ADMIN'), async (req, res) => {
   const point = await findTenantPoint(parsed.data.pointId, req.user.restaurantId);
   if (parsed.data.pointId && !point) {
     return fail(res, 'Ponto de medição inválido.', 422);
+  }
+
+  try {
+    await assertDeviceQuota(req.user.restaurantId);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Limite do plano atingido.', 409);
   }
 
   const apiKey = randomBytes(32).toString('hex');

@@ -250,3 +250,54 @@ export type ComplianceRecord = {
   status: string;
   createdAt: string;
 };
+
+export type PlanCode = 'ESSENTIAL' | 'PROFESSIONAL' | 'PREMIUM';
+
+export type CommercialPlan = {
+  code: PlanCode;
+  name: string;
+  description: string;
+  amountCents: number;
+  currency: 'BRL';
+  interval: 'MONTH';
+  highlighted: boolean;
+  maxUsers: number;
+  maxLabelsPerMonth: number | null;
+  maxAiAnalysesPerMonth: number;
+  maxDevices: number;
+  features: string[];
+};
+
+export type SubscriptionInfo = {
+  id: string;
+  planCode: PlanCode;
+  status: 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | string;
+  payerEmail?: string | null;
+  checkoutUrl?: string | null;
+  amountCents: number;
+  currency: string;
+  currentPeriodEnd?: string | null;
+  canceledAt?: string | null;
+};
+
+export type AppNotification = {
+  id: string;
+  type: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  title: string;
+  message: string;
+  link?: string | null;
+  readAt?: string | null;
+  emailSentAt?: string | null;
+  createdAt: string;
+};
+
+export type NotificationPreference = {
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  labelsEnabled: boolean;
+  documentsEnabled: boolean;
+  complianceEnabled: boolean;
+  temperatureEnabled: boolean;
+  deviceOfflineEnabled: boolean;
+};

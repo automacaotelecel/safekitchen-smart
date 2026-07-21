@@ -11,16 +11,18 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Download,
   Sparkles,
   Thermometer,
   FolderClock,
   ClipboardCheck,
   UserCog,
+  Bell,
+  FileBarChart,
+  CreditCard,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { clearToken } from '../api/client';
+import { api, clearToken } from '../api/client';
 import { ThemeToggle } from './ThemeToggle';
 
 const links = [
@@ -31,10 +33,13 @@ const links = [
   { to: '/temperaturas', label: 'Temperaturas', icon: Thermometer },
   { to: '/documentos', label: 'Documentos', icon: FolderClock },
   { to: '/controles', label: 'Controles', icon: ClipboardCheck },
+  { to: '/relatorios', label: 'Dossiê e relatórios', icon: FileBarChart },
+  { to: '/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/ia', label: 'IA', icon: Sparkles },
   { to: '/produtos', label: 'Produtos', icon: PackagePlus },
   { to: '/funcionarios', label: 'Funcionários', icon: Users },
   { to: '/conta', label: 'Conta e equipe', icon: UserCog },
+  { to: '/assinatura', label: 'Plano e assinatura', icon: CreditCard },
 ];
 
 function LogoImage({ compact = false }: { compact?: boolean }) {
@@ -115,6 +120,7 @@ export function Layout() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   function logout() {
     clearToken();
@@ -132,6 +138,21 @@ export function Layout() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadUnread = () => {
+      api<{ unread: number }>('/api/notifications/summary')
+        .then((data) => active && setUnreadNotifications(data.unread))
+        .catch(() => undefined);
+    };
+    loadUnread();
+    const timer = window.setInterval(loadUnread, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const sidebarWidthClass = desktopSidebarCollapsed ? 'lg:ml-[92px]' : 'lg:ml-72';
   const desktopAsideWidth = desktopSidebarCollapsed ? 'w-[92px]' : 'w-72';
 
@@ -139,19 +160,7 @@ export function Layout() {
     <>
       <LogoBlock compact={compact} />
 
-      {!compact && (
-        <div className="mt-5 rounded-[26px] bg-gradient-to-br from-[#0e6673] to-[#29d1ad] p-5 text-white shadow-lg">
-          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/70">
-            Controle de qualidade
-          </p>
-
-          <p className="mt-3 text-sm font-semibold leading-6 text-white/90">
-            Etiquetas, validade e histórico organizados para a rotina da cozinha.
-          </p>
-        </div>
-      )}
-
-      <nav className="mt-6 space-y-2">
+      <nav className="mt-5 space-y-2">
         {links.map((item) => {
           const Icon = item.icon;
 
@@ -171,23 +180,18 @@ export function Layout() {
             >
               <Icon size={19} />
               {!compact && item.label}
+              {item.to === '/notificacoes' && unreadNotifications > 0 && (
+                <span className={`${compact ? 'absolute translate-x-3 -translate-y-3' : 'ml-auto'} flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white`}>
+                  {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                </span>
+              )}
             </NavLink>
           );
         })}
       </nav>
 
       <div className={`mt-auto ${compact ? 'pt-4' : 'pt-8'}`}>
-        <div className={`flex items-center gap-3 ${compact ? 'justify-center' : ''}`}>
-          {!compact && <ThemeToggle compact={false} />}
-
-          <button
-            type="button"
-            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#ffbf00] text-safe-dark shadow-sm transition hover:brightness-95"
-            title="Instalar aplicativo"
-          >
-            <Download size={18} />
-          </button>
-        </div>
+        {!compact && <ThemeToggle compact={false} />}
 
         <button
           onClick={logout}
@@ -206,7 +210,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-[#f4f8f8] text-safe-dark transition-colors dark:bg-[#071b1d]">
       <aside
-        className={`fixed left-0 top-0 z-40 hidden h-screen ${desktopAsideWidth} border-r border-slate-200 bg-white/92 p-4 shadow-sm backdrop-blur-xl transition-all dark:border-white/10 dark:bg-[#071b1d] lg:flex lg:flex-col`}
+        className={`safe-scrollbar fixed left-0 top-0 z-40 hidden h-screen ${desktopAsideWidth} overflow-y-auto overscroll-contain border-r border-slate-200 bg-white/92 p-4 shadow-sm backdrop-blur-xl transition-all dark:border-white/10 dark:bg-[#071b1d] lg:flex lg:flex-col`}
       >
         <button
           type="button"
@@ -241,8 +245,8 @@ export function Layout() {
             onClick={() => setMobileMenuOpen(false)}
           />
 
-          <div className="absolute left-0 top-0 flex h-full w-[88%] max-w-[320px] flex-col bg-white p-4 shadow-2xl transition-colors dark:bg-[#071b1d]">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="safe-scrollbar absolute inset-y-0 left-0 flex w-[88%] max-w-[320px] flex-col overflow-y-auto overscroll-contain bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl transition-colors dark:bg-[#071b1d]">
+            <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-white pb-2 dark:bg-[#071b1d]">
               <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-safe-green">
                 Menu
               </p>

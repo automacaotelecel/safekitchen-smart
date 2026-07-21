@@ -10,11 +10,15 @@ import { prisma } from './lib/prisma';
 
 import accountRoutes from './modules/account/account.routes';
 import authRoutes from './modules/auth/auth.routes';
+import billingRoutes from './modules/billing/billing.routes';
 import complianceRoutes from './modules/compliance/compliance.routes';
 import documentRoutes from './modules/documents/documents.routes';
 import employeeRoutes from './modules/employees/employees.routes';
 import labelRoutes from './modules/labels/labels.routes';
+import notificationRoutes, { alertJobHandler } from './modules/notifications/notifications.routes';
+import { runAlertCycle } from './modules/notifications/notifications.service';
 import productRoutes from './modules/products/products.routes';
+import reportRoutes from './modules/reports/reports.routes';
 import temperatureRoutes from './modules/temperature/temperature.routes';
 import validityRoutes from './modules/validity/validity.routes';
 import visionRoutes from './modules/vision/vision.routes';
@@ -126,10 +130,14 @@ app.get('/health', async (_req, res) => {
     database,
     visionEnabled: Boolean(env.geminiApiKey),
     storageEnabled: env.storageEnabled,
+    billingEnabled: env.mercadoPagoEnabled,
+    emailEnabled: env.emailEnabled,
   });
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/billing', billingRoutes);
+app.post('/api/jobs/alerts', alertJobHandler);
 app.use('/api/account', accountRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/labels', labelRoutes);
@@ -139,6 +147,8 @@ app.use('/api/vision', visionRoutes);
 app.use('/api/temperature', temperatureRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/compliance', complianceRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -165,6 +175,27 @@ const server = app.listen(env.port, () => {
   console.log(`SafeKitchen Smart API disponível na porta ${env.port}.`);
 });
 
+let alertCycleRunning = false;
+async function scheduledAlertCycle() {
+  if (alertCycleRunning) return;
+  alertCycleRunning = true;
+  try {
+    await runAlertCycle();
+  } catch (error) {
+    console.error('Falha no ciclo agendado de alertas:', error);
+  } finally {
+    alertCycleRunning = false;
+  }
+}
+
+if (env.nodeEnv !== 'test') {
+  setTimeout(() => void scheduledAlertCycle(), 15_000).unref();
+  setInterval(
+    () => void scheduledAlertCycle(),
+    env.alertIntervalMinutes * 60_000
+  ).unref();
+}
+
 async function shutdown(signal: string) {
   console.log(`Encerrando servidor (${signal})...`);
 
@@ -178,4 +209,3 @@ async function shutdown(signal: string) {
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
-

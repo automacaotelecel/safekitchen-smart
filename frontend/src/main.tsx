@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { NewLabel } from './pages/NewLabel';
-import { LabelManagement } from './pages/LabelManagement';
+import { History } from './pages/History';
 import PrintQueue from './pages/PrintQueue'; 
 import { PrintLabelsPage } from './pages/PrintLabelsPage';
 import { AiAssistant } from './pages/AiAssistant';
@@ -17,6 +17,10 @@ import { TemperatureControl } from './pages/TemperatureControl';
 import { Documents } from './pages/Documents';
 import { Compliance } from './pages/Compliance';
 import { Account } from './pages/Account';
+import { Plans } from './pages/Plans';
+import { Subscription } from './pages/Subscription';
+import { Notifications } from './pages/Notifications';
+import { Reports } from './pages/Reports';
 
 // === IMPORTANDO O MENU E A PROTEÇÃO DE TELA ===
 import { Layout } from './components/Layout';
@@ -31,6 +35,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
       <Routes>
         {/* Página de Login (Pública) */}
         <Route path="/login" element={<Login />} />
+        <Route path="/planos" element={<Plans />} />
 
         {/* Páginas Internas (Protegidas por senha e com o Menu Lateral do Layout) */}
         <Route
@@ -46,7 +51,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           
           {/* Outras páginas do seu menu */}
           <Route path="nova-etiqueta" element={<NewLabel />} />
-          <Route path="historico" element={<LabelManagement />} />
+          <Route path="historico" element={<History />} />
           <Route path="impressao" element={<PrintQueue />} />
           <Route path="ia" element={<AiAssistant />} />
           <Route path="produtos" element={<Products />} />
@@ -56,6 +61,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           <Route path="documentos" element={<Documents />} />
           <Route path="controles" element={<Compliance />} />
           <Route path="conta" element={<Account />} />
+          <Route path="assinatura" element={<Subscription />} />
+          <Route path="notificacoes" element={<Notifications />} />
+          <Route path="relatorios" element={<Reports />} />
         </Route>
 
         <Route

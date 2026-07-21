@@ -6,6 +6,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { api } from '../api/client';
 
@@ -154,6 +155,13 @@ export function Account() {
             value={planEnd ? new Date(planEnd).toLocaleDateString('pt-BR') : '—'}
           />
         </div>
+
+        <Link
+          to="/assinatura"
+          className="mt-4 inline-flex items-center justify-center rounded-2xl bg-safe-dark px-4 py-3 text-sm font-black text-white"
+        >
+          Gerenciar plano e cobrança
+        </Link>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[390px_1fr]">
@@ -271,4 +279,3 @@ function InfoCard({
 }
 
 export default Account;
-

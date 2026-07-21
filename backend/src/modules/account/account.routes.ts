@@ -156,6 +156,39 @@ router.patch('/users/:id', requireRole('ADMIN'), async (req, res) => {
     return fail(res, 'Você não pode desativar o próprio usuário.', 409);
   }
 
+  const removesAdministrator =
+    target.role === 'ADMIN' &&
+    target.active &&
+    (parsed.data.active === false ||
+      (parsed.data.role !== undefined && parsed.data.role !== 'ADMIN'));
+
+  if (removesAdministrator) {
+    const otherAdministrators = await prisma.user.count({
+      where: {
+        restaurantId: req.user.restaurantId,
+        role: 'ADMIN',
+        active: true,
+        id: { not: target.id },
+      },
+    });
+    if (otherAdministrators === 0) {
+      return fail(res, 'A conta precisa manter pelo menos um administrador ativo.', 409);
+    }
+  }
+
+  if (!target.active && parsed.data.active === true) {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: req.user.restaurantId },
+      select: {
+        maxUsers: true,
+        _count: { select: { users: { where: { active: true } } } },
+      },
+    });
+    if (restaurant && restaurant._count.users >= restaurant.maxUsers) {
+      return fail(res, 'Limite de usuários do plano atingido.', 409);
+    }
+  }
+
   const passwordHash = parsed.data.password
     ? await bcrypt.hash(parsed.data.password, 12)
     : undefined;

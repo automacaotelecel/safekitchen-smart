@@ -17,6 +17,12 @@ export function subscriptionIsActive(input: {
     return Boolean(input.trialEndsAt && new Date(input.trialEndsAt).getTime() >= now);
   }
 
+  if (input.subscriptionStatus === 'PAST_DUE') {
+    return Boolean(
+      input.subscriptionEndsAt && new Date(input.subscriptionEndsAt).getTime() >= now
+    );
+  }
+
   return false;
 }
 
@@ -35,4 +41,3 @@ export function requireActiveSubscription(
     402
   );
 }
-

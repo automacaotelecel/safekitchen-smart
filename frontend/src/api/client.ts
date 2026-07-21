@@ -5,6 +5,12 @@ const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3333').
 const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
 const REQUEST_TIMEOUT_MS = 30_000;
 
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -60,8 +66,19 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
         }
       }
 
+      if (
+        response.status === 402 &&
+        !path.startsWith('/api/billing') &&
+        window.location.pathname !== '/assinatura'
+      ) {
+        window.location.assign('/assinatura?expired=1');
+      }
+
       if (!response.ok || !json?.ok) {
-        throw new Error(json?.message || `Erro na comunicação com o servidor (HTTP ${response.status}).`);
+        throw new ApiError(
+          json?.message || `Erro na comunicação com o servidor (HTTP ${response.status}).`,
+          response.status
+        );
       }
 
       return json.data;
@@ -71,7 +88,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
           ? new Error('O servidor demorou demais para responder.')
           : error;
 
-      if (!shouldRetry || attempt === attempts) break;
+      if (error instanceof ApiError || !shouldRetry || attempt === attempts) break;
       await sleep(700 * attempt);
     } finally {
       window.clearTimeout(timeout);
@@ -100,4 +117,3 @@ export async function uploadToSignedUrl(
 }
 
 export { API_URL };
-
