@@ -170,6 +170,7 @@ export async function syncKitPayment(paymentId: string) {
       status,
       providerPaymentId: String(payment.id),
       paidAt: status === 'APPROVED' ? order.paidAt || new Date() : order.paidAt,
+      fulfillmentStatus: status === 'APPROVED' ? 'PREPARING' : order.fulfillmentStatus,
     },
     include: { contract: true },
   });
@@ -186,11 +187,45 @@ export async function syncKitPayment(paymentId: string) {
       type: 'KIT_PAYMENT_APPROVED',
       severity: 'INFO',
       title: 'Pagamento do kit aprovado',
-      message: 'Agora autorize a mensalidade para concluir a contratação e receber seu contrato.',
+      message: 'Aguarde a entrega e confirme o recebimento do kit para autorizar a mensalidade.',
       link: '/assinatura',
       dedupeKey: `kit:${order.id}:approved`,
     });
     await activateContractIfEligible(order.restaurantId);
   }
   return updated;
+}
+
+export async function confirmKitDelivery(restaurantId: string) {
+  const order = await prisma.kitOrder.findFirst({
+    where: { restaurantId, status: 'APPROVED' },
+    orderBy: { paidAt: 'desc' },
+  });
+
+  if (!order) throw new Error('Nenhum kit pago foi encontrado para esta conta.');
+
+  const delivered = order.deliveredAt
+    ? order
+    : await prisma.kitOrder.update({
+        where: { id: order.id },
+        data: {
+          deliveredAt: new Date(),
+          fulfillmentStatus: 'DELIVERED',
+        },
+      });
+
+  const contract = await activateContractIfEligible(restaurantId);
+  await createSystemNotification({
+    restaurantId,
+    type: 'KIT_DELIVERED',
+    severity: 'INFO',
+    title: 'Recebimento do kit confirmado',
+    message: contract
+      ? 'Kit recebido e acesso operacional liberado.'
+      : 'Kit recebido. Agora autorize a mensalidade para liberar o sistema.',
+    link: '/assinatura',
+    dedupeKey: `kit:${order.id}:delivered`,
+  });
+
+  return { order: delivered, operationalAccess: Boolean(contract) };
 }

@@ -10,6 +10,7 @@ import { recordAudit } from '../../lib/audit';
 import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware, type AuthUser } from './auth.middleware';
+import { subscriptionIsActive } from '../subscription/subscription.middleware';
 
 const router = Router();
 
@@ -45,6 +46,18 @@ function signToken(user: AuthUser) {
   return jwt.sign(user, env.jwtSecret, { expiresIn: '12h' });
 }
 
+function accessState(input: {
+  subscriptionStatus: string;
+  trialEndsAt?: Date | string | null;
+  subscriptionEndsAt?: Date | string | null;
+}) {
+  const operationalAccess = subscriptionIsActive(input);
+  return {
+    operationalAccess,
+    requiresContracting: !operationalAccess,
+  };
+}
+
 router.post('/register', async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
@@ -54,13 +67,14 @@ router.post('/register', async (req, res) => {
   if (exists) return fail(res, 'Este e-mail já está cadastrado.', 409);
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
-  const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
   const restaurant = await prisma.restaurant.create({
     data: {
       name: parsed.data.restaurantName,
       slug: slugify(parsed.data.restaurantName),
-      trialEndsAt,
+      plan: 'UNASSIGNED',
+      subscriptionStatus: 'PENDING',
+      trialEndsAt: null,
+      maxUsers: 1,
       users: {
         create: {
           name: parsed.data.name,
@@ -119,6 +133,7 @@ router.post('/register', async (req, res) => {
         subscriptionStatus: restaurant.subscriptionStatus,
         trialEndsAt: restaurant.trialEndsAt,
       },
+      ...accessState(restaurant),
     },
     201
   );
@@ -175,6 +190,7 @@ router.post('/login', async (req, res) => {
       subscriptionStatus: user.restaurant.subscriptionStatus,
       trialEndsAt: user.restaurant.trialEndsAt,
     },
+    ...accessState(user.restaurant),
   });
 });
 
@@ -212,6 +228,7 @@ router.get('/me', authMiddleware, async (req, res) => {
       subscriptionEndsAt: user.restaurant.subscriptionEndsAt,
       maxUsers: user.restaurant.maxUsers,
     },
+    ...accessState(user.restaurant),
   });
 });
 

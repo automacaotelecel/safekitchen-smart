@@ -292,6 +292,8 @@ export type KitOrderInfo = {
   currency: string;
   providerPaymentId?: string | null;
   paidAt?: string | null;
+  fulfillmentStatus?: 'AWAITING_PAYMENT' | 'PREPARING' | 'DELIVERED' | string;
+  deliveredAt?: string | null;
 };
 
 export type CommercialContractInfo = {

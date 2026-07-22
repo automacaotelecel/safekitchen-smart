@@ -143,7 +143,7 @@ export async function renderContractPdf(contract: CommercialContract) {
   paragraph(`O CONTRATANTE pagará ${money(snapshot.plan.setupAmountCents)} pelo kit e implantação, em cobrança única, e ${money(snapshot.plan.monthlyAmountCents)} por mês pela licença e serviços digitais. A mensalidade será cobrada pelo Mercado Pago conforme autorização do CONTRATANTE. Tarifas de internet, etiquetas adicionais, equipamentos extras e integrações não descritas acima não estão incluídas.`);
 
   heading('4. ATIVAÇÃO, ENTREGA E IMPLANTAÇÃO');
-  paragraph(`A ativação comercial ocorre após a confirmação do pagamento do kit e da autorização da mensalidade. O prazo estimado de despacho é de até ${snapshot.deliveryDays} dias úteis, contado da confirmação dos dados e do pagamento, salvo indisponibilidade comunicada ao CONTRATANTE. O CONTRATANTE deverá conferir os itens recebidos e comunicar divergências sem demora indevida.`);
+  paragraph(`O acesso operacional será liberado após a confirmação do pagamento do kit, da autorização da mensalidade e do recebimento dos equipamentos pelo CONTRATANTE. O prazo estimado de despacho é de até ${snapshot.deliveryDays} dias úteis, contado da confirmação dos dados e do pagamento, salvo indisponibilidade comunicada ao CONTRATANTE. O CONTRATANTE deverá conferir os itens recebidos e comunicar divergências sem demora indevida.`);
 
   heading('5. VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO');
   paragraph('A licença mensal vigorará por prazo indeterminado, com renovação automática a cada mês. O CONTRATANTE poderá solicitar cancelamento pelos canais disponibilizados. O cancelamento interrompe cobranças futuras, sem apagar obrigações vencidas. A devolução do kit e eventual reembolso observarão a legislação aplicável, inclusive o direito de arrependimento quando cabível, o estado dos produtos e os custos já efetivamente prestados permitidos por lei.');
@@ -191,7 +191,7 @@ export async function emailContract(contractId: string, forceResend = false) {
         ? `contract:${contract.id}:resend:${Date.now()}`
         : `contract:${contract.id}:v${contract.version}`,
       attachments: [{ filename: `${contract.contractNumber}.pdf`, content: pdf.toString('base64') }],
-      html: `<div style="font-family:Arial,sans-serif;background:#f4f8f7;padding:32px;color:#102f35"><div style="max-width:620px;margin:auto;background:#fff;border-radius:18px;padding:28px"><strong style="color:#087f70">SAFEKITCHEN SMART</strong><h1>Contratação confirmada</h1><p>Olá, ${htmlEscape(contract.customerName)}.</p><p>O pagamento do kit e a assinatura do plano foram confirmados. O contrato nº <strong>${htmlEscape(contract.contractNumber)}</strong> está anexado em PDF.</p><p>Guarde este documento e os comprovantes de pagamento.</p></div></div>`,
+      html: `<div style="font-family:Arial,sans-serif;background:#f4f8f7;padding:32px;color:#102f35"><div style="max-width:620px;margin:auto;background:#fff;border-radius:18px;padding:28px"><strong style="color:#087f70">SAFEKITCHEN SMART</strong><h1>Contratação confirmada</h1><p>Olá, ${htmlEscape(contract.customerName)}.</p><p>O pagamento, a assinatura do plano e o recebimento do kit foram confirmados. O contrato nº <strong>${htmlEscape(contract.contractNumber)}</strong> está anexado em PDF e o acesso operacional foi liberado.</p><p>Guarde este documento e os comprovantes de pagamento.</p></div></div>`,
     });
     return prisma.commercialContract.update({
       where: { id: contract.id },
@@ -215,7 +215,9 @@ export async function activateContractIfEligible(restaurantId: string) {
     }),
     prisma.subscription.findUnique({ where: { restaurantId } }),
   ]);
-  if (!kitOrder?.contract || subscription?.status !== 'ACTIVE') return null;
+  if (!kitOrder?.contract || !kitOrder.deliveredAt || subscription?.status !== 'ACTIVE') {
+    return null;
+  }
 
   const plan = getCommercialPlan(subscription.planCode);
   if (!plan || plan.code !== kitOrder.planCode) return null;

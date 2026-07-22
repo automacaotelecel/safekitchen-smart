@@ -52,8 +52,8 @@ export async function createMercadoPagoCheckout(input: {
   const approvedKit = await prisma.kitOrder.findFirst({
     where: { restaurantId: input.restaurantId, planCode: plan.code, status: 'APPROVED' },
   });
-  if (!approvedKit) {
-    throw new Error('Confirme primeiro o pagamento do kit para autorizar a mensalidade.');
+  if (!approvedKit?.deliveredAt) {
+    throw new Error('Confirme primeiro o recebimento do kit para autorizar a mensalidade.');
   }
 
   const current = await prisma.subscription.findUnique({
@@ -165,9 +165,11 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       restaurant.trialEndsAt >= now
   );
   const accountStatus =
-    status === 'ACTIVE' && approvedKit
+    status === 'ACTIVE' && approvedKit?.deliveredAt
       ? 'ACTIVE'
-      : status === 'ACTIVE'
+      : status === 'ACTIVE' && approvedKit
+        ? 'AWAITING_DELIVERY'
+        : status === 'ACTIVE'
         ? 'PENDING_KIT'
         : status === 'PENDING' && trialStillActive
           ? 'TRIALING'
@@ -211,8 +213,8 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
-        plan: status === 'ACTIVE' && approvedKit ? plan.code : restaurant.plan,
-        maxUsers: status === 'ACTIVE' && approvedKit ? plan.maxUsers : restaurant.maxUsers,
+        plan: status === 'ACTIVE' && approvedKit?.deliveredAt ? plan.code : restaurant.plan,
+        maxUsers: status === 'ACTIVE' && approvedKit?.deliveredAt ? plan.maxUsers : restaurant.maxUsers,
         subscriptionStatus: accountStatus,
         subscriptionEndsAt:
           status === 'ACTIVE'
@@ -230,7 +232,9 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       type: 'SUBSCRIPTION_ACTIVE',
       severity: 'INFO',
       title: 'Assinatura confirmada',
-      message: `O plano ${plan.name} está ativo e os recursos foram liberados.`,
+      message: approvedKit?.deliveredAt
+        ? `O plano ${plan.name} está ativo e os recursos foram liberados.`
+        : `A mensalidade do plano ${plan.name} foi autorizada. Confirme o recebimento do kit para liberar o sistema.`,
       link: '/assinatura',
       dedupeKey: `billing:${providerSubscriptionId}:active`,
     });

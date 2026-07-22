@@ -51,7 +51,7 @@ export function Plans() {
             plans={plans}
             busyPlan={null}
             onSelect={() => navigate(authenticated ? '/assinatura' : '/login?register=1')}
-            actionLabel={() => authenticated ? 'Contratar no sistema' : 'Começar teste grátis'}
+            actionLabel={() => authenticated ? 'Contratar' : 'Cadastrar para contratar'}
           />
         )}
       </div>

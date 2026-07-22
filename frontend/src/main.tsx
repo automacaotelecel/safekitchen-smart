@@ -26,6 +26,7 @@ import { Reports } from './pages/Reports';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { ActiveSubscriptionRoute } from './components/ActiveSubscriptionRoute';
 
 // === ESTILO GLOBAL ===
 import './index.css';
@@ -38,13 +39,23 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
         {/* Página de Login (Pública) */}
         <Route path="/login" element={<Login />} />
         <Route path="/planos" element={<Plans />} />
+        <Route
+          path="/assinatura"
+          element={
+            <ProtectedRoute>
+              <Subscription />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Páginas Internas (Protegidas por senha e com o Menu Lateral do Layout) */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <Layout />
+              <ActiveSubscriptionRoute>
+                <Layout />
+              </ActiveSubscriptionRoute>
             </ProtectedRoute>
           }
         >
@@ -63,7 +74,6 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           <Route path="documentos" element={<Documents />} />
           <Route path="controles" element={<Compliance />} />
           <Route path="conta" element={<Account />} />
-          <Route path="assinatura" element={<Subscription />} />
           <Route path="notificacoes" element={<Notifications />} />
           <Route path="relatorios" element={<Reports />} />
         </Route>
@@ -72,7 +82,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           path="/imprimir-folha"
           element={
             <ProtectedRoute>
-              <PrintLabelsPage />
+              <ActiveSubscriptionRoute>
+                <PrintLabelsPage />
+              </ActiveSubscriptionRoute>
             </ProtectedRoute>
           }
         />

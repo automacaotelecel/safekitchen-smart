@@ -41,7 +41,7 @@ const schema = z.object({
   CONTRACT_PROVIDER_ADDRESS: z.string().default(''),
   CONTRACT_PROVIDER_EMAIL: z.string().email().or(z.literal('')).default(''),
   CONTRACT_CITY: z.string().default(''),
-  CONTRACT_TERMS_VERSION: z.string().default('2026-07-22'),
+  CONTRACT_TERMS_VERSION: z.string().default('2026-07-23'),
   CONTRACT_DELIVERY_DAYS: z.coerce.number().int().min(1).max(180).default(15),
   RESEND_API_KEY: z.string().default(''),
   EMAIL_FROM: z.string().default('SafeKitchen Smart <alertas@safekitchensmart.com.br>'),

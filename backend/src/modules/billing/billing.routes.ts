@@ -21,7 +21,7 @@ import {
   syncMercadoPagoSubscription,
 } from './billing.service';
 import { emailContract, renderContractPdf } from './contracts.service';
-import { createKitCheckout, syncKitPayment } from './kits.service';
+import { confirmKitDelivery, createKitCheckout, syncKitPayment } from './kits.service';
 import { getCommercialPlan, getCommercialPlans, type PlanCode } from './plans';
 
 const router = Router();
@@ -48,7 +48,7 @@ const kitCheckoutSchema = planSchema.extend({
 router.get('/plans', (_req, res) => {
   return ok(res, {
     enabled: env.mercadoPagoEnabled,
-    trialDays: 7,
+    activationPolicy: 'KIT_AND_SUBSCRIPTION_CONFIRMED',
     contractConfigured: env.contractProviderConfigured,
     contractTermsVersion: env.contractTermsVersion,
     contractProvider: env.contractProviderConfigured
@@ -233,6 +233,23 @@ router.post('/kit-sync', requireRole('ADMIN'), async (req, res) => {
     return ok(res, order);
   } catch (error) {
     return fail(res, error instanceof Error ? error.message : 'Erro ao sincronizar o kit.', 502);
+  }
+});
+
+router.post('/kit-confirm-delivery', requireRole('ADMIN'), async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+  try {
+    const result = await confirmKitDelivery(req.user.restaurantId);
+    await recordAudit({
+      restaurantId: req.user.restaurantId,
+      userId: req.user.userId,
+      action: 'CONFIRM_DELIVERY',
+      entity: 'KitOrder',
+      entityId: result.order.id,
+    });
+    return ok(res, result);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Erro ao confirmar recebimento.', 409);
   }
 });
 

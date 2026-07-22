@@ -14,11 +14,11 @@ model Restaurant {
   document           String?
   logoUrl            String?
   timezone           String    @default("America/Sao_Paulo")
-  plan               String    @default("TRIAL")
-  subscriptionStatus String    @default("TRIALING")
+  plan               String    @default("UNASSIGNED")
+  subscriptionStatus String    @default("PENDING")
   trialEndsAt        DateTime?
   subscriptionEndsAt DateTime?
-  maxUsers           Int       @default(5)
+  maxUsers           Int       @default(1)
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -362,6 +362,8 @@ model KitOrder {
   customerPhone        String?
   deliveryAddress      Json
   paidAt               DateTime?
+  fulfillmentStatus    String    @default("AWAITING_PAYMENT")
+  deliveredAt          DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

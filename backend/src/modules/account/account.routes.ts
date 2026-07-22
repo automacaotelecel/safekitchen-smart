@@ -6,10 +6,12 @@ import { recordAudit } from '../../lib/audit';
 import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware, requireRole } from '../auth/auth.middleware';
+import { requireActiveSubscription } from '../subscription/subscription.middleware';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireActiveSubscription);
 
 const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -22,6 +24,18 @@ const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'EMPLOYEE']).optional(),
   active: z.boolean().optional(),
+  password: z.string().min(8).max(100).optional(),
+});
+
+const updateRestaurantSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  document: z.string().trim().max(20).nullable().optional(),
+  timezone: z.string().trim().min(3).max(80).optional(),
+});
+
+const updateCurrentUserSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  email: z.string().trim().email().max(180).optional(),
   password: z.string().min(8).max(100).optional(),
 });
 
@@ -54,6 +68,90 @@ router.get('/', async (req, res) => {
 
   if (!restaurant) return fail(res, 'Conta não encontrada.', 404);
   return ok(res, restaurant);
+});
+
+router.patch('/', requireRole('ADMIN'), async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const parsed = updateRestaurantSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 'Dados da empresa inválidos.', 422, parsed.error.flatten());
+  if (Object.keys(parsed.data).length === 0) return fail(res, 'Nenhuma alteração enviada.', 422);
+
+  const restaurant = await prisma.restaurant.update({
+    where: { id: req.user.restaurantId },
+    data: {
+      name: parsed.data.name,
+      document: parsed.data.document === '' ? null : parsed.data.document,
+      timezone: parsed.data.timezone,
+    },
+    select: {
+      id: true,
+      name: true,
+      document: true,
+      timezone: true,
+      plan: true,
+      subscriptionStatus: true,
+      subscriptionEndsAt: true,
+      maxUsers: true,
+    },
+  });
+
+  await recordAudit({
+    restaurantId: req.user.restaurantId,
+    userId: req.user.userId,
+    action: 'UPDATE',
+    entity: 'Restaurant',
+    entityId: restaurant.id,
+  });
+
+  return ok(res, restaurant);
+});
+
+router.patch('/me', async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const parsed = updateCurrentUserSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 'Dados pessoais inválidos.', 422, parsed.error.flatten());
+  if (Object.keys(parsed.data).length === 0) return fail(res, 'Nenhuma alteração enviada.', 422);
+
+  const email = parsed.data.email?.toLowerCase();
+  if (email) {
+    const existing = await prisma.user.findFirst({
+      where: { email, id: { not: req.user.userId } },
+      select: { id: true },
+    });
+    if (existing) return fail(res, 'Este e-mail já está cadastrado.', 409);
+  }
+
+  const user = await prisma.user.update({
+    where: { id: req.user.userId },
+    data: {
+      name: parsed.data.name,
+      email,
+      passwordHash: parsed.data.password
+        ? await bcrypt.hash(parsed.data.password, 12)
+        : undefined,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      updatedAt: true,
+    },
+  });
+
+  await recordAudit({
+    restaurantId: req.user.restaurantId,
+    userId: req.user.userId,
+    action: 'UPDATE',
+    entity: 'User',
+    entityId: user.id,
+    metadata: { selfService: true },
+  });
+
+  return ok(res, user);
 });
 
 router.get('/users', requireRole('ADMIN', 'MANAGER'), async (req, res) => {

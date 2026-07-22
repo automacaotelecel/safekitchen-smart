@@ -15,6 +15,11 @@ type LoginResponse = {
     name: string;
     email: string;
   };
+  restaurant: {
+    subscriptionStatus: string;
+  };
+  operationalAccess: boolean;
+  requiresContracting: boolean;
 };
 
 export function Login() {
@@ -46,7 +51,7 @@ export function Login() {
       });
 
       setToken(data.token);
-      navigate('/');
+      navigate(data.requiresContracting ? '/assinatura' : '/', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao entrar.');
     } finally {
@@ -164,13 +169,30 @@ export function Login() {
               Acesso seguro
             </p>
 
+            <div className="mt-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-black/20 p-1">
+              <button
+                type="button"
+                onClick={() => { setRegistering(false); setError(''); }}
+                className={`rounded-xl px-4 py-3 text-sm font-black transition ${!registering ? 'bg-[#19F5C7] text-[#031B22]' : 'text-white/70'}`}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRegistering(true); setError(''); }}
+                className={`rounded-xl px-4 py-3 text-sm font-black transition ${registering ? 'bg-[#19F5C7] text-[#031B22]' : 'text-white/70'}`}
+              >
+                Cadastrar
+              </button>
+            </div>
+
             <h2 className="mt-2 text-3xl font-black text-white">
               {registering ? 'Criar conta' : 'Entrar no sistema'}
             </h2>
 
             <p className="mt-2 text-sm font-semibold text-white/65">
               {registering
-                ? 'Comece com 7 dias de teste e cadastre sua operação.'
+                ? 'Cadastre sua empresa para escolher o kit e concluir a contratação.'
                 : 'Acesse os controles da sua empresa com segurança.'}
             </p>
 
@@ -226,7 +248,7 @@ export function Login() {
                 minLength={registering ? 8 : undefined}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
+                autoComplete={registering ? 'new-password' : 'current-password'}
                 className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/35"
               />
             </div>
@@ -243,7 +265,7 @@ export function Login() {
             >
               {loading
                 ? registering ? 'Criando conta...' : 'Entrando...'
-                : registering ? 'Criar conta e iniciar teste' : 'Entrar'}
+                : registering ? 'Cadastrar e escolher plano' : 'Entrar'}
               <ArrowRight size={18} />
             </button>
 
@@ -254,16 +276,6 @@ export function Login() {
               Conhecer planos e recursos
             </Link>
 
-            <button
-              type="button"
-              onClick={() => {
-                setRegistering((old) => !old);
-                setError('');
-              }}
-              className="mt-6 w-full rounded-3xl border border-white/10 bg-white/8 p-4 text-center text-xs font-bold text-[#19F5C7]"
-            >
-              {registering ? 'Já tenho conta' : 'Criar conta com 7 dias de teste'}
-            </button>
           </form>
         </div>
       </div>

@@ -38,7 +38,7 @@ const links = [
   { to: '/ia', label: 'IA', icon: Sparkles },
   { to: '/produtos', label: 'Produtos', icon: PackagePlus },
   { to: '/funcionarios', label: 'Funcionários', icon: Users },
-  { to: '/conta', label: 'Conta e equipe', icon: UserCog },
+  { to: '/conta', label: 'Administração', icon: UserCog },
   { to: '/assinatura', label: 'Plano e assinatura', icon: CreditCard },
 ];
 

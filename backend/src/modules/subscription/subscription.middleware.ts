@@ -37,7 +37,7 @@ export function requireActiveSubscription(
 
   return fail(
     res,
-    'Seu período de teste ou assinatura terminou. Regularize o plano para continuar.',
+    'Conclua a contratação ou regularize sua assinatura para acessar o sistema.',
     402
   );
 }
