@@ -1,13 +1,13 @@
 {
   "name": "SafeKitchen Smart",
   "short_name": "SafeKitchen",
-  "description": "Etiquetas, validade automática e controle de qualidade para cozinhas.",
-  "start_url": "/",
+  "description": "Etiquetas, temperaturas, documentos, alertas e histórico para operações de alimentação.",
+  "start_url": "/painel",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#f6fbfb",
-  "theme_color": "#19D09C",
+  "background_color": "#041f28",
+  "theme_color": "#041f28",
   "categories": ["business", "productivity", "food"],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

@@ -51,7 +51,7 @@ export function Login() {
       });
 
       setToken(data.token);
-      navigate(data.requiresContracting ? '/assinatura' : '/', { replace: true });
+      navigate(data.requiresContracting ? '/assinatura' : '/painel', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao entrar.');
     } finally {

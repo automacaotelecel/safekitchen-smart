@@ -193,7 +193,7 @@ export function Subscription() {
           <div className="flex flex-wrap gap-2">
             {operationalAccess && (
               <>
-                <Link to="/" className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black">
+                <Link to="/painel" className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black">
                   <ArrowLeft size={15} /> Voltar ao sistema
                 </Link>
                 <Link to="/conta" className="inline-flex items-center gap-2 rounded-xl bg-safe-dark px-3 py-2 text-xs font-black text-white">

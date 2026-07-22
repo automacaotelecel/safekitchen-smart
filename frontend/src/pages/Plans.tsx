@@ -24,7 +24,7 @@ export function Plans() {
     <main className="min-h-screen bg-[#f4f8f8] px-4 py-8 text-safe-dark sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link to={authenticated ? '/' : '/login'} className="inline-flex items-center gap-2 text-sm font-black text-safe-green">
+          <Link to={authenticated ? '/painel' : '/'} className="inline-flex items-center gap-2 text-sm font-black text-safe-green">
             <ArrowLeft size={17} /> Voltar
           </Link>
           <div className="flex items-center gap-2 text-sm font-bold text-slate-500">

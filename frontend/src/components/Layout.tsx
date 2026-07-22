@@ -26,7 +26,7 @@ import { api, clearToken } from '../api/client';
 import { ThemeToggle } from './ThemeToggle';
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: Home },
+  { to: '/painel', label: 'Dashboard', icon: Home },
   { to: '/nova-etiqueta', label: 'Nova etiqueta', icon: Tags },
   { to: '/historico', label: 'Histórico', icon: ClipboardList },
   { to: '/impressao', label: 'Impressão', icon: Printer },
@@ -95,7 +95,7 @@ function LogoImage({ compact = false }: { compact?: boolean }) {
 function LogoBlock({ compact = false }: { compact?: boolean }) {
   return (
     <Link
-      to="/"
+      to="/painel"
       className={`flex items-center gap-3 rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition dark:border-slate-200 dark:bg-white ${
         compact ? 'justify-center' : ''
       }`}

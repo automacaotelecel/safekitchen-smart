@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+Disallow: /painel
+Disallow: /assinatura
+Disallow: /conta
+Disallow: /funcionarios
+Disallow: /notificacoes
+Disallow: /relatorios
+Disallow: /documentos
+Disallow: /controles
+Disallow: /temperaturas
+Disallow: /historico
+Disallow: /impressao
+Disallow: /imprimir-folha
+Disallow: /nova-etiqueta
+Disallow: /produtos
+Disallow: /ia
+
+Sitemap: https://www.safekitchensmart.com.br/sitemap.xml
