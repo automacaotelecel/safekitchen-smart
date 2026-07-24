@@ -56,13 +56,13 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  documents           Document[]
-  temperatureReadings TemperatureReading[]
-  complianceRecords   ComplianceRecord[]
-  auditLogs           AuditLog[]
-  aiUsage             AiUsage[]
-  notifications       Notification[]
+  restaurant             Restaurant              @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  documents              Document[]
+  temperatureReadings    TemperatureReading[]
+  complianceRecords      ComplianceRecord[]
+  auditLogs              AuditLog[]
+  aiUsage                AiUsage[]
+  notifications          Notification[]
   notificationPreference NotificationPreference?
   acceptedContracts      CommercialContract[]
 
@@ -346,61 +346,71 @@ model Subscription {
 }
 
 model KitOrder {
-  id                   String    @id @default(cuid())
-  restaurantId         String
-  planCode             String
-  status               String    @default("PENDING")
-  provider              String    @default("MERCADO_PAGO")
-  providerPreferenceId String?   @unique
-  providerPaymentId    String?   @unique
-  checkoutUrl          String?
-  amountCents          Int
-  currency             String    @default("BRL")
-  payerEmail           String
-  customerName         String
-  customerDocument     String
-  customerPhone        String?
-  deliveryAddress      Json
-  paidAt               DateTime?
-  fulfillmentStatus    String    @default("AWAITING_PAYMENT")
-  deliveredAt          DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                      String    @id @default(cuid())
+  restaurantId            String
+  planCode                String
+  status                  String    @default("PENDING")
+  provider                String    @default("MERCADO_PAGO")
+  providerPreferenceId    String?   @unique
+  providerPaymentId       String?   @unique
+  checkoutUrl             String?
+  amountCents             Int
+  currency                String    @default("BRL")
+  payerEmail              String
+  customerName            String
+  customerDocument        String
+  customerPhone           String?
+  deliveryAddress         Json
+  paidAt                  DateTime?
+  fulfillmentStatus       String    @default("AWAITING_PAYMENT")
+  shippedAt               DateTime?
+  trackingCode            String?
+  trackingUrl             String?
+  shippingEmailedAt       DateTime?
+  shippingEmailProviderId String?
+  shippingEmailError      String?
+  deliveredAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   restaurant Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   contract   CommercialContract?
 
   @@index([restaurantId, status, createdAt])
   @@index([providerPaymentId])
+  @@index([fulfillmentStatus, updatedAt])
 }
 
 model CommercialContract {
-  id                 String    @id @default(cuid())
-  restaurantId       String
-  kitOrderId         String    @unique
-  acceptedById       String
-  contractNumber     String    @unique
-  version            String
-  status             String    @default("ACCEPTED_PENDING_PAYMENT")
-  customerName       String
-  customerEmail      String
-  customerDocument   String
-  customerPhone      String?
-  planCode           String
-  setupAmountCents   Int
-  monthlyAmountCents Int
-  currency           String    @default("BRL")
-  termsSnapshot      Json
-  contentHash        String
-  acceptedAt         DateTime
-  acceptedIp         String?
-  acceptedUserAgent  String?
-  activatedAt        DateTime?
-  emailedAt          DateTime?
-  emailProviderId    String?
-  emailError         String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  restaurantId           String
+  kitOrderId             String    @unique
+  acceptedById           String
+  contractNumber         String    @unique
+  version                String
+  status                 String    @default("ACCEPTED_PENDING_PAYMENT")
+  customerName           String
+  customerEmail          String
+  customerDocument       String
+  customerPhone          String?
+  planCode               String
+  setupAmountCents       Int
+  monthlyAmountCents     Int
+  currency               String    @default("BRL")
+  termsSnapshot          Json
+  contentHash            String
+  acceptedAt             DateTime
+  acceptedIp             String?
+  acceptedUserAgent      String?
+  activatedAt            DateTime?
+  emailedAt              DateTime?
+  emailProviderId        String?
+  emailError             String?
+  welcomeEmailedAt       DateTime?
+  welcomeEmailProviderId String?
+  welcomeEmailError      String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   kitOrder   KitOrder   @relation(fields: [kitOrderId], references: [id], onDelete: Cascade)
@@ -411,16 +421,16 @@ model CommercialContract {
 }
 
 model PaymentEvent {
-  id                String    @id @default(cuid())
-  restaurantId      String?
-  provider          String    @default("MERCADO_PAGO")
-  providerEventId   String    @unique
-  eventType         String
-  resourceId        String?
-  payload           Json?
-  processedAt       DateTime?
-  processingError   String?
-  createdAt         DateTime  @default(now())
+  id              String    @id @default(cuid())
+  restaurantId    String?
+  provider        String    @default("MERCADO_PAGO")
+  providerEventId String    @unique
+  eventType       String
+  resourceId      String?
+  payload         Json?
+  processedAt     DateTime?
+  processingError String?
+  createdAt       DateTime  @default(now())
 
   restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
 
@@ -429,39 +439,39 @@ model PaymentEvent {
 }
 
 model NotificationPreference {
-  id                       String   @id @default(cuid())
-  userId                   String   @unique
-  inAppEnabled             Boolean  @default(true)
-  emailEnabled             Boolean  @default(true)
-  labelsEnabled            Boolean  @default(true)
-  documentsEnabled         Boolean  @default(true)
-  complianceEnabled        Boolean  @default(true)
-  temperatureEnabled       Boolean  @default(true)
-  deviceOfflineEnabled     Boolean  @default(true)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  inAppEnabled         Boolean  @default(true)
+  emailEnabled         Boolean  @default(true)
+  labelsEnabled        Boolean  @default(true)
+  documentsEnabled     Boolean  @default(true)
+  complianceEnabled    Boolean  @default(true)
+  temperatureEnabled   Boolean  @default(true)
+  deviceOfflineEnabled Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
-  id             String    @id @default(cuid())
-  restaurantId   String
-  userId         String
-  type           String
-  severity       String    @default("INFO")
-  title          String
-  message        String
-  link           String?
-  entity         String?
-  entityId       String?
-  dedupeKey      String
-  readAt         DateTime?
-  emailSentAt    DateTime?
-  emailAttempts  Int       @default(0)
-  emailError     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  restaurantId  String
+  userId        String
+  type          String
+  severity      String    @default("INFO")
+  title         String
+  message       String
+  link          String?
+  entity        String?
+  entityId      String?
+  dedupeKey     String
+  readAt        DateTime?
+  emailSentAt   DateTime?
+  emailAttempts Int       @default(0)
+  emailError    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)

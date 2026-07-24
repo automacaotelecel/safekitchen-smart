@@ -72,6 +72,7 @@ const corsOptions: CorsOptions = {
     'Accept',
     'Origin',
     'X-Device-Key',
+    'X-Operations-Secret',
   ],
   optionsSuccessStatus: 204,
 };
@@ -133,6 +134,7 @@ app.get('/health', async (_req, res) => {
     billingEnabled: env.mercadoPagoEnabled,
     emailEnabled: env.emailEnabled,
     contractEnabled: env.contractProviderConfigured,
+    billingOperationsEnabled: env.billingOperationsEnabled,
   });
 });
 

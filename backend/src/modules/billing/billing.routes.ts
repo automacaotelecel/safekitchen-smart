@@ -1,7 +1,7 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 
 import { Prisma } from '@prisma/client';
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import {
   InvalidWebhookSignatureError,
   WebhookSignatureValidator,
@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { env } from '../../config/env';
 import { recordAudit } from '../../lib/audit';
+import { sendEmail } from '../../lib/email';
 import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware, requireRole } from '../auth/auth.middleware';
@@ -21,7 +22,12 @@ import {
   syncMercadoPagoSubscription,
 } from './billing.service';
 import { emailContract, renderContractPdf } from './contracts.service';
-import { confirmKitDelivery, createKitCheckout, syncKitPayment } from './kits.service';
+import {
+  confirmKitDelivery,
+  createKitCheckout,
+  markKitShipped,
+  syncKitPayment,
+} from './kits.service';
 import { getCommercialPlan, getCommercialPlans, type PlanCode } from './plans';
 
 const router = Router();
@@ -44,21 +50,30 @@ const kitCheckoutSchema = planSchema.extend({
     state: z.string().trim().length(2).transform((value) => value.toUpperCase()),
   }),
 });
+const kitShipmentSchema = z.object({
+  orderId: z.string().trim().min(1),
+  trackingCode: z.string().trim().min(3).max(100),
+  trackingUrl: z.string().trim().url().max(500).optional(),
+  forceResend: z.boolean().optional().default(false),
+});
+const testEmailSchema = z.object({
+  to: z.string().trim().email(),
+});
 
-function billingErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-
-  if (
-    error &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof error.message === 'string' &&
-    error.message.trim()
-  ) {
-    return error.message.trim();
+function requireBillingOperations(req: Request, res: Response, next: NextFunction) {
+  if (!env.billingOperationsSecret) {
+    return fail(res, 'Operação de kits não configurada no servidor.', 503);
   }
 
-  return fallback;
+  const received = req.get('x-operations-secret') || '';
+  const expectedBuffer = Buffer.from(env.billingOperationsSecret);
+  const receivedBuffer = Buffer.from(received);
+  const authorized =
+    expectedBuffer.length === receivedBuffer.length &&
+    timingSafeEqual(expectedBuffer, receivedBuffer);
+
+  if (!authorized) return fail(res, 'Credencial operacional inválida.', 401);
+  return next();
 }
 
 router.get('/plans', (_req, res) => {
@@ -78,6 +93,84 @@ router.get('/plans', (_req, res) => {
       : null,
     plans: getCommercialPlans(),
   });
+});
+
+router.get('/operations/kit-orders', requireBillingOperations, async (_req, res) => {
+  const orders = await prisma.kitOrder.findMany({
+    where: {
+      status: 'APPROVED',
+      fulfillmentStatus: { in: ['PREPARING', 'SHIPPED'] },
+    },
+    orderBy: { paidAt: 'asc' },
+    select: {
+      id: true,
+      restaurantId: true,
+      planCode: true,
+      customerName: true,
+      payerEmail: true,
+      paidAt: true,
+      fulfillmentStatus: true,
+      shippedAt: true,
+      trackingCode: true,
+      trackingUrl: true,
+      shippingEmailedAt: true,
+      shippingEmailError: true,
+      contract: { select: { contractNumber: true } },
+    },
+  });
+  return ok(res, orders);
+});
+
+router.post('/operations/test-email', requireBillingOperations, async (req, res) => {
+  const parsed = testEmailSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 'Informe um e-mail válido para o teste.', 422);
+
+  try {
+    const result = await sendEmail({
+      to: parsed.data.to,
+      subject: 'Teste de e-mail — SafeKitchen Smart',
+      idempotencyKey: `operations:test-email:${Date.now()}`,
+      html: `
+        <div style="background:#eef7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#102f35">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border:1px solid #dce9e6;border-radius:22px;padding:28px">
+            <strong style="color:#087f70;letter-spacing:2px">SAFEKITCHEN SMART</strong>
+            <h1 style="font-size:24px;margin:14px 0">Envio configurado com sucesso</h1>
+            <p style="font-size:16px;line-height:1.65;color:#425b60">
+              O backend conseguiu enviar este e-mail usando o domínio e a chave configurados no Resend.
+            </p>
+          </div>
+        </div>
+      `,
+    });
+    return ok(res, { sent: true, providerId: result.id || null });
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Erro ao enviar e-mail de teste.', 502);
+  }
+});
+
+router.post('/operations/kit-shipped', requireBillingOperations, async (req, res) => {
+  const parsed = kitShipmentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return fail(res, 'Revise o pedido e os dados de rastreamento.', 422, parsed.error.flatten());
+  }
+
+  try {
+    const order = await markKitShipped(parsed.data);
+    await recordAudit({
+      restaurantId: order.restaurantId,
+      action: 'KIT_SHIPPED',
+      entity: 'KitOrder',
+      entityId: order.id,
+      metadata: {
+        trackingCode: order.trackingCode,
+        trackingUrl: order.trackingUrl,
+        shippingEmailedAt: order.shippingEmailedAt?.toISOString() || null,
+      },
+    });
+    return ok(res, order);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Erro ao registrar despacho.', 409);
+  }
 });
 
 router.post('/webhooks/mercado-pago', async (req, res) => {
@@ -189,6 +282,8 @@ router.get('/subscription', async (req, res) => {
         activatedAt: true,
         emailedAt: true,
         emailError: true,
+        welcomeEmailedAt: true,
+        welcomeEmailError: true,
       },
     }),
   ]);
@@ -206,12 +301,6 @@ router.get('/subscription', async (req, res) => {
 
 router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
-  if (!env.mercadoPagoEnabled) {
-    return fail(res, 'Os pagamentos estão temporariamente indisponíveis.', 503);
-  }
-  if (!env.contractProviderConfigured) {
-    return fail(res, 'Os dados jurídicos do contrato ainda não foram configurados.', 503);
-  }
   const parsed = kitCheckoutSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Revise os dados do contratante, endereço e aceite.', 422, parsed.error.flatten());
   if (parsed.data.termsVersion !== env.contractTermsVersion) {
@@ -241,9 +330,7 @@ router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
     });
     return ok(res, { order, checkoutUrl: order.checkoutUrl }, 201);
   } catch (error) {
-    const message = billingErrorMessage(error, 'Erro ao iniciar pagamento do kit.');
-    console.error(`[billing] Falha ao criar checkout do kit: ${message}`);
-    return fail(res, message, 502);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar pagamento do kit.', 502);
   }
 });
 
@@ -280,10 +367,13 @@ router.post('/kit-confirm-delivery', requireRole('ADMIN'), async (req, res) => {
 router.get('/contract/pdf', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
   const contract = await prisma.commercialContract.findFirst({
-    where: { restaurantId: req.user.restaurantId, status: 'ACTIVE' },
-    orderBy: { activatedAt: 'desc' },
+    where: {
+      restaurantId: req.user.restaurantId,
+      status: { in: ['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'] },
+    },
+    orderBy: { createdAt: 'desc' },
   });
-  if (!contract) return fail(res, 'Nenhum contrato ativo encontrado.', 404);
+  if (!contract) return fail(res, 'Nenhum contrato pago encontrado.', 404);
   const pdf = await renderContractPdf(contract);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${contract.contractNumber}.pdf"`);
@@ -293,10 +383,13 @@ router.get('/contract/pdf', requireRole('ADMIN', 'MANAGER'), async (req, res) =>
 router.post('/contract/resend', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
   const contract = await prisma.commercialContract.findFirst({
-    where: { restaurantId: req.user.restaurantId, status: 'ACTIVE' },
-    orderBy: { activatedAt: 'desc' },
+    where: {
+      restaurantId: req.user.restaurantId,
+      status: { in: ['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'] },
+    },
+    orderBy: { createdAt: 'desc' },
   });
-  if (!contract) return fail(res, 'Nenhum contrato ativo encontrado.', 404);
+  if (!contract) return fail(res, 'Nenhum contrato pago encontrado.', 404);
   try {
     return ok(res, await emailContract(contract.id, true));
   } catch (error) {
@@ -306,9 +399,6 @@ router.post('/contract/resend', requireRole('ADMIN'), async (req, res) => {
 
 router.post('/checkout', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
-  if (!env.mercadoPagoEnabled) {
-    return fail(res, 'Os pagamentos estão temporariamente indisponíveis.', 503);
-  }
   const parsed = planSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Plano inválido.', 422);
 
@@ -330,9 +420,7 @@ router.post('/checkout', requireRole('ADMIN'), async (req, res) => {
 
     return ok(res, { subscription, checkoutUrl: subscription.checkoutUrl }, 201);
   } catch (error) {
-    const message = billingErrorMessage(error, 'Erro ao iniciar contratação.');
-    console.error(`[billing] Falha ao criar assinatura: ${message}`);
-    return fail(res, message, 502);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar contratação.', 502);
   }
 });
 

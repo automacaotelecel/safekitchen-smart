@@ -292,7 +292,12 @@ export type KitOrderInfo = {
   currency: string;
   providerPaymentId?: string | null;
   paidAt?: string | null;
-  fulfillmentStatus?: 'AWAITING_PAYMENT' | 'PREPARING' | 'DELIVERED' | string;
+  fulfillmentStatus?: 'AWAITING_PAYMENT' | 'PREPARING' | 'SHIPPED' | 'DELIVERED' | string;
+  shippedAt?: string | null;
+  trackingCode?: string | null;
+  trackingUrl?: string | null;
+  shippingEmailedAt?: string | null;
+  shippingEmailError?: string | null;
   deliveredAt?: string | null;
 };
 
@@ -306,6 +311,8 @@ export type CommercialContractInfo = {
   activatedAt?: string | null;
   emailedAt?: string | null;
   emailError?: string | null;
+  welcomeEmailedAt?: string | null;
+  welcomeEmailError?: string | null;
 };
 
 export type AppNotification = {

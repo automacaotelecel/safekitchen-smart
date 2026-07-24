@@ -179,19 +179,55 @@ function htmlEscape(value: string) {
 export async function emailContract(contractId: string, forceResend = false) {
   const contract = await prisma.commercialContract.findUnique({ where: { id: contractId } });
   if (!contract) throw new Error('Contrato não encontrado.');
-  if (contract.status !== 'ACTIVE') throw new Error('O contrato ainda não está ativo.');
+  if (!['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'].includes(contract.status)) {
+    throw new Error('O pagamento do kit ainda não foi confirmado.');
+  }
   if (contract.emailedAt && !forceResend) return contract;
 
+  const snapshot = snapshotFrom(contract);
   const pdf = await renderContractPdf(contract);
   try {
     const result = await sendEmail({
       to: contract.customerEmail,
-      subject: `Contrato ${contract.contractNumber} — SafeKitchen Smart`,
+      subject: `Recebemos sua contratação — ${snapshot.plan.name}`,
       idempotencyKey: forceResend
         ? `contract:${contract.id}:resend:${Date.now()}`
-        : `contract:${contract.id}:v${contract.version}`,
+        : `contract:${contract.id}:paid:v${contract.version}`,
       attachments: [{ filename: `${contract.contractNumber}.pdf`, content: pdf.toString('base64') }],
-      html: `<div style="font-family:Arial,sans-serif;background:#f4f8f7;padding:32px;color:#102f35"><div style="max-width:620px;margin:auto;background:#fff;border-radius:18px;padding:28px"><strong style="color:#087f70">SAFEKITCHEN SMART</strong><h1>Contratação confirmada</h1><p>Olá, ${htmlEscape(contract.customerName)}.</p><p>O pagamento, a assinatura do plano e o recebimento do kit foram confirmados. O contrato nº <strong>${htmlEscape(contract.contractNumber)}</strong> está anexado em PDF e o acesso operacional foi liberado.</p><p>Guarde este documento e os comprovantes de pagamento.</p></div></div>`,
+      html: `
+        <div style="background:#eef7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#102f35">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border:1px solid #dce9e6;border-radius:22px;overflow:hidden">
+            <div style="background:#073b4c;padding:24px 28px;color:#ffffff">
+              <div style="font-size:12px;font-weight:800;letter-spacing:2px;color:#32e3bc">SAFEKITCHEN SMART</div>
+              <h1 style="font-size:26px;margin:10px 0 0">Obrigado pela sua contratação!</h1>
+            </div>
+            <div style="padding:28px">
+              <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
+              <p style="font-size:16px;line-height:1.65;color:#425b60">
+                Confirmamos o pagamento do kit <strong>${htmlEscape(snapshot.plan.name)}</strong>.
+                É um prazer receber você no SafeKitchen Smart.
+              </p>
+              <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
+                <p style="margin:0 0 8px"><strong>Contrato:</strong> ${htmlEscape(contract.contractNumber)}</p>
+                <p style="margin:0 0 8px"><strong>Kit e implantação:</strong> ${money(snapshot.plan.setupAmountCents)}</p>
+                <p style="margin:0"><strong>Mensalidade após a ativação:</strong> ${money(snapshot.plan.monthlyAmountCents)}</p>
+              </div>
+              <h2 style="font-size:18px;margin:24px 0 10px">Próximas etapas</h2>
+              <ol style="padding-left:22px;line-height:1.7;color:#425b60">
+                <li>Vamos preparar e despachar o kit em até ${snapshot.deliveryDays} dias úteis.</li>
+                <li>Quando ele for enviado, você receberá o código de rastreamento por e-mail.</li>
+                <li>Depois do recebimento, confirme a entrega e autorize a mensalidade para liberar o acesso operacional.</li>
+              </ol>
+              <p style="font-size:15px;line-height:1.65;color:#425b60">
+                O contrato com o registro do aceite eletrônico está anexado em PDF. Guarde-o junto com o comprovante de pagamento.
+              </p>
+              <p style="margin-top:26px;font-size:13px;color:#718487">
+                Em caso de dúvida, responda este e-mail ou escreva para ${htmlEscape(snapshot.provider.email)}.
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
     });
     return prisma.commercialContract.update({
       where: { id: contract.id },
@@ -201,6 +237,77 @@ export async function emailContract(contractId: string, forceResend = false) {
     await prisma.commercialContract.update({
       where: { id: contract.id },
       data: { emailError: (error instanceof Error ? error.message : 'Falha no envio').slice(0, 500) },
+    });
+    throw error;
+  }
+}
+
+export async function emailWelcome(contractId: string, forceResend = false) {
+  const contract = await prisma.commercialContract.findUnique({ where: { id: contractId } });
+  if (!contract) throw new Error('Contrato não encontrado.');
+  if (contract.status !== 'ACTIVE') throw new Error('O contrato ainda não está ativo.');
+  if (contract.welcomeEmailedAt && !forceResend) return contract;
+
+  const snapshot = snapshotFrom(contract);
+  const appUrl = `${env.frontendUrl.split(',')[0].replace(/\/$/, '')}/painel`;
+
+  try {
+    const result = await sendEmail({
+      to: contract.customerEmail,
+      subject: `Seu SafeKitchen Smart está ativo — ${snapshot.plan.name}`,
+      idempotencyKey: forceResend
+        ? `contract:${contract.id}:welcome:resend:${Date.now()}`
+        : `contract:${contract.id}:welcome:v${contract.version}`,
+      html: `
+        <div style="background:#eef7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#102f35">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border:1px solid #dce9e6;border-radius:22px;overflow:hidden">
+            <div style="background:#073b4c;padding:24px 28px;color:#ffffff">
+              <div style="font-size:12px;font-weight:800;letter-spacing:2px;color:#32e3bc">SAFEKITCHEN SMART</div>
+              <h1 style="font-size:26px;margin:10px 0 0">Tudo pronto. Bem-vindo!</h1>
+            </div>
+            <div style="padding:28px">
+              <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
+              <p style="font-size:16px;line-height:1.65;color:#425b60">
+                O recebimento do kit e a assinatura do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>
+                foram confirmados. Seu acesso operacional está liberado.
+              </p>
+              <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
+                <p style="margin:0 0 8px"><strong>Plano vigente:</strong> ${htmlEscape(snapshot.plan.name)}</p>
+                <p style="margin:0"><strong>Contrato:</strong> ${htmlEscape(contract.contractNumber)}</p>
+              </div>
+              <a href="${htmlEscape(appUrl)}" style="display:inline-block;background:#16c79a;color:#073b4c;text-decoration:none;padding:14px 22px;border-radius:14px;font-weight:800">
+                Acessar o SafeKitchen
+              </a>
+              <h2 style="font-size:18px;margin:28px 0 10px">Para começar</h2>
+              <ol style="padding-left:22px;line-height:1.7;color:#425b60">
+                <li>Revise os dados da empresa e cadastre sua equipe.</li>
+                <li>Cadastre os produtos e as regras de validade.</li>
+                <li>Configure a impressora e faça uma etiqueta de teste.</li>
+                <li>Cadastre os pontos de temperatura e os documentos obrigatórios.</li>
+              </ol>
+              <p style="margin-top:26px;font-size:13px;color:#718487">
+                Precisa de ajuda? Fale com a equipe pelo e-mail ${htmlEscape(snapshot.provider.email)}.
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+    });
+
+    return prisma.commercialContract.update({
+      where: { id: contract.id },
+      data: {
+        welcomeEmailedAt: new Date(),
+        welcomeEmailProviderId: result.id || null,
+        welcomeEmailError: null,
+      },
+    });
+  } catch (error) {
+    await prisma.commercialContract.update({
+      where: { id: contract.id },
+      data: {
+        welcomeEmailError: (error instanceof Error ? error.message : 'Falha no envio').slice(0, 500),
+      },
     });
     throw error;
   }
@@ -238,13 +345,21 @@ export async function activateContractIfEligible(restaurantId: string) {
     });
   });
 
-  let emailSent = Boolean(contract.emailedAt);
   if (!contract.emailedAt) {
     try {
-      const emailed = await emailContract(contract.id);
-      emailSent = Boolean(emailed.emailedAt);
+      await emailContract(contract.id);
     } catch (error) {
       console.error('Falha ao enviar contrato:', error);
+    }
+  }
+
+  let welcomeSent = Boolean(contract.welcomeEmailedAt);
+  if (!contract.welcomeEmailedAt) {
+    try {
+      const welcomed = await emailWelcome(contract.id);
+      welcomeSent = Boolean(welcomed.welcomeEmailedAt);
+    } catch (error) {
+      console.error('Falha ao enviar boas-vindas:', error);
     }
   }
 
@@ -253,9 +368,9 @@ export async function activateContractIfEligible(restaurantId: string) {
     type: 'CONTRACT_ACTIVE',
     severity: 'INFO',
     title: 'Contratação concluída',
-    message: emailSent
-      ? `O contrato ${contract.contractNumber} está ativo e foi enviado para ${contract.customerEmail}.`
-      : `O contrato ${contract.contractNumber} está ativo. O envio por e-mail está pendente e pode ser repetido nesta tela.`,
+    message: welcomeSent
+      ? `O contrato ${contract.contractNumber} está ativo e as boas-vindas foram enviadas para ${contract.customerEmail}.`
+      : `O contrato ${contract.contractNumber} está ativo. O envio das boas-vindas está pendente.`,
     link: '/assinatura',
     dedupeKey: `contract:${contract.id}:active`,
   });

@@ -43,6 +43,7 @@ export async function sendEmail(input: {
   subject: string;
   html: string;
   idempotencyKey: string;
+  replyTo?: string;
   attachments?: Array<{ filename: string; content: string }>;
 }) {
   if (!env.resendApiKey) throw new Error('RESEND_API_KEY não configurada.');
@@ -59,6 +60,7 @@ export async function sendEmail(input: {
       to: [input.to],
       subject: input.subject,
       html: input.html,
+      reply_to: input.replyTo || env.emailReplyTo || env.contractProviderEmail || undefined,
       attachments: input.attachments,
     }),
   });

@@ -9,9 +9,7 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória.'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET deve ter pelo menos 16 caracteres.'),
   FRONTEND_URL: z.string().default('http://localhost:5174'),
-  BACKEND_URL: z.string().default(''),
-  RENDER_EXTERNAL_URL: z.string().default(''),
-  RENDER_EXTERNAL_HOSTNAME: z.string().default(''),
+  BACKEND_URL: z.string().default('http://localhost:3333'),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   GEMINI_FALLBACK_MODELS: z.string().default('gemini-2.5-flash-lite'),
@@ -47,6 +45,13 @@ const schema = z.object({
   CONTRACT_DELIVERY_DAYS: z.coerce.number().int().min(1).max(180).default(15),
   RESEND_API_KEY: z.string().default(''),
   EMAIL_FROM: z.string().default('SafeKitchen Smart <alertas@safekitchensmart.com.br>'),
+  EMAIL_REPLY_TO: z.string().email().or(z.literal('')).default(''),
+  BILLING_OPERATIONS_SECRET: z
+    .string()
+    .default('')
+    .refine((value) => !value || value.length >= 32, {
+      message: 'BILLING_OPERATIONS_SECRET deve ter pelo menos 32 caracteres.',
+    }),
   ALERT_JOB_SECRET: z.string().default(''),
   ALERT_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
   DEVICE_OFFLINE_MINUTES: z.coerce.number().int().min(5).max(10080).default(60),
@@ -72,39 +77,6 @@ const storageEnabled = Boolean(
     parsed.data.S3_SECRET_ACCESS_KEY
 );
 
-function trimBaseUrl(value: string) {
-  return value.trim().replace(/\/+$/, '');
-}
-
-function isLocalUrl(value: string) {
-  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(value);
-}
-
-const renderExternalUrl = trimBaseUrl(
-  parsed.data.RENDER_EXTERNAL_URL ||
-    (parsed.data.RENDER_EXTERNAL_HOSTNAME
-      ? `https://${parsed.data.RENDER_EXTERNAL_HOSTNAME}`
-      : '')
-);
-const configuredBackendUrl = trimBaseUrl(parsed.data.BACKEND_URL);
-const backendUrl =
-  parsed.data.NODE_ENV === 'production' &&
-  renderExternalUrl &&
-  (!configuredBackendUrl || isLocalUrl(configuredBackendUrl))
-    ? renderExternalUrl
-    : configuredBackendUrl ||
-      renderExternalUrl ||
-      `http://localhost:${parsed.data.PORT}`;
-
-if (
-  parsed.data.NODE_ENV === 'production' &&
-  (!backendUrl.startsWith('https://') || isLocalUrl(backendUrl))
-) {
-  throw new Error(
-    'Em produção, BACKEND_URL deve ser uma URL pública HTTPS. No Render ela é detectada automaticamente.'
-  );
-}
-
 export const env = {
   nodeEnv: parsed.data.NODE_ENV,
   isProduction: parsed.data.NODE_ENV === 'production',
@@ -112,7 +84,7 @@ export const env = {
   databaseUrl: parsed.data.DATABASE_URL,
   jwtSecret: parsed.data.JWT_SECRET,
   frontendUrl: parsed.data.FRONTEND_URL,
-  backendUrl,
+  backendUrl: parsed.data.BACKEND_URL.replace(/\/$/, ''),
   geminiApiKey: parsed.data.GEMINI_API_KEY,
   geminiModel: parsed.data.GEMINI_MODEL,
   geminiFallbackModels: parsed.data.GEMINI_FALLBACK_MODELS
@@ -152,7 +124,10 @@ export const env = {
   ),
   resendApiKey: parsed.data.RESEND_API_KEY,
   emailFrom: parsed.data.EMAIL_FROM,
+  emailReplyTo: parsed.data.EMAIL_REPLY_TO,
   emailEnabled: Boolean(parsed.data.RESEND_API_KEY),
+  billingOperationsSecret: parsed.data.BILLING_OPERATIONS_SECRET,
+  billingOperationsEnabled: Boolean(parsed.data.BILLING_OPERATIONS_SECRET),
   alertJobSecret: parsed.data.ALERT_JOB_SECRET,
   alertIntervalMinutes: parsed.data.ALERT_INTERVAL_MINUTES,
   deviceOfflineMinutes: parsed.data.DEVICE_OFFLINE_MINUTES,

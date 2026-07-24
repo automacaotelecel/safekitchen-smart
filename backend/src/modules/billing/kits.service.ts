@@ -2,12 +2,14 @@ import type { Prisma } from '@prisma/client';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 
 import { env } from '../../config/env';
+import { sendEmail } from '../../lib/email';
 import { prisma } from '../../lib/prisma';
 import { createSystemNotification } from '../notifications/notifications.service';
 import {
   activateContractIfEligible,
   contractHash,
   createContractSnapshot,
+  emailContract,
   newContractNumber,
 } from './contracts.service';
 import { getCommercialPlan, type PlanCode } from './plans';
@@ -36,6 +38,14 @@ export type KitCheckoutInput = {
 function client() {
   if (!env.mercadoPagoAccessToken) throw new Error('Mercado Pago não configurado no servidor.');
   return new MercadoPagoConfig({ accessToken: env.mercadoPagoAccessToken, options: { timeout: 15_000 } });
+}
+
+function htmlEscape(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char]!
+  );
 }
 
 export async function createKitCheckout(input: KitCheckoutInput) {
@@ -182,17 +192,154 @@ export async function syncKitPayment(paymentId: string) {
         data: { status: 'KIT_PAID_PENDING_SUBSCRIPTION' },
       });
     }
+
+    let contractEmailed = Boolean(updated.contract?.emailedAt);
+    if (updated.contract && !updated.contract.emailedAt) {
+      try {
+        const emailed = await emailContract(updated.contract.id);
+        contractEmailed = Boolean(emailed.emailedAt);
+      } catch (error) {
+        console.error('Falha ao enviar confirmação da contratação:', error);
+      }
+    }
+
     await createSystemNotification({
       restaurantId: order.restaurantId,
       type: 'KIT_PAYMENT_APPROVED',
       severity: 'INFO',
       title: 'Pagamento do kit aprovado',
-      message: 'Aguarde a entrega e confirme o recebimento do kit para autorizar a mensalidade.',
+      message: contractEmailed
+        ? 'A confirmação e o contrato foram enviados por e-mail. Aguarde o kit e confirme o recebimento para autorizar a mensalidade.'
+        : 'Pagamento confirmado. O envio do contrato por e-mail está pendente. Aguarde o kit e confirme o recebimento para autorizar a mensalidade.',
       link: '/assinatura',
       dedupeKey: `kit:${order.id}:approved`,
     });
     await activateContractIfEligible(order.restaurantId);
   }
+  return updated;
+}
+
+export async function emailKitShipment(orderId: string, forceResend = false) {
+  const order = await prisma.kitOrder.findUnique({
+    where: { id: orderId },
+    include: { contract: true },
+  });
+  if (!order) throw new Error('Pedido do kit não encontrado.');
+  if (order.status !== 'APPROVED') throw new Error('O kit ainda não está pago.');
+  if (!order.shippedAt || !order.trackingCode) throw new Error('O despacho ainda não foi registrado.');
+  if (order.shippingEmailedAt && !forceResend) return order;
+
+  const plan = getCommercialPlan(order.planCode);
+  if (!plan) throw new Error('Plano do kit não encontrado.');
+  const trackingLink = order.trackingUrl
+    ? `<a href="${htmlEscape(order.trackingUrl)}" style="display:inline-block;margin-top:14px;background:#16c79a;color:#073b4c;text-decoration:none;padding:13px 20px;border-radius:13px;font-weight:800">Acompanhar entrega</a>`
+    : '';
+
+  try {
+    const result = await sendEmail({
+      to: order.payerEmail,
+      subject: `Seu kit ${plan.name} foi enviado`,
+      idempotencyKey: forceResend
+        ? `kit:${order.id}:shipped:resend:${Date.now()}`
+        : `kit:${order.id}:shipped:${order.trackingCode}`,
+      html: `
+        <div style="background:#eef7f5;padding:32px 16px;font-family:Arial,sans-serif;color:#102f35">
+          <div style="max-width:620px;margin:auto;background:#ffffff;border:1px solid #dce9e6;border-radius:22px;overflow:hidden">
+            <div style="background:#073b4c;padding:24px 28px;color:#ffffff">
+              <div style="font-size:12px;font-weight:800;letter-spacing:2px;color:#32e3bc">SAFEKITCHEN SMART</div>
+              <h1 style="font-size:26px;margin:10px 0 0">Seu kit está a caminho</h1>
+            </div>
+            <div style="padding:28px">
+              <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(order.customerName)}</strong>.</p>
+              <p style="font-size:16px;line-height:1.65;color:#425b60">
+                O kit <strong>${htmlEscape(plan.name)}</strong> foi despachado e já pode ser acompanhado.
+              </p>
+              <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
+                <p style="margin:0 0 8px"><strong>Código de rastreamento:</strong> ${htmlEscape(order.trackingCode)}</p>
+                <p style="margin:0"><strong>Contrato:</strong> ${htmlEscape(order.contract?.contractNumber || 'em processamento')}</p>
+              </div>
+              ${trackingLink}
+              <p style="margin-top:24px;font-size:15px;line-height:1.65;color:#425b60">
+                Depois que o kit chegar, entre na tela de assinatura e confirme o recebimento.
+                Essa confirmação faz parte da ativação do acesso operacional.
+              </p>
+              <p style="margin-top:26px;font-size:13px;color:#718487">
+                Se houver alguma divergência na entrega, entre em contato com ${htmlEscape(env.contractProviderEmail)}.
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+    });
+
+    return prisma.kitOrder.update({
+      where: { id: order.id },
+      data: {
+        shippingEmailedAt: new Date(),
+        shippingEmailProviderId: result.id || null,
+        shippingEmailError: null,
+      },
+      include: { contract: true },
+    });
+  } catch (error) {
+    await prisma.kitOrder.update({
+      where: { id: order.id },
+      data: {
+        shippingEmailError: (error instanceof Error ? error.message : 'Falha no envio').slice(0, 500),
+      },
+    });
+    throw error;
+  }
+}
+
+export async function markKitShipped(input: {
+  orderId: string;
+  trackingCode: string;
+  trackingUrl?: string;
+  forceResend?: boolean;
+}) {
+  const order = await prisma.kitOrder.findUnique({ where: { id: input.orderId } });
+  if (!order) throw new Error('Pedido do kit não encontrado.');
+  if (order.status !== 'APPROVED') throw new Error('Somente kits pagos podem ser despachados.');
+  if (order.deliveredAt) throw new Error('Este kit já foi marcado como recebido.');
+
+  await prisma.kitOrder.update({
+    where: { id: order.id },
+    data: {
+      fulfillmentStatus: 'SHIPPED',
+      shippedAt: order.shippedAt || new Date(),
+      trackingCode: input.trackingCode,
+      trackingUrl: input.trackingUrl || null,
+      shippingEmailError: null,
+    },
+  });
+
+  let emailSent = false;
+  try {
+    const emailed = await emailKitShipment(order.id, Boolean(input.forceResend));
+    emailSent = Boolean(emailed.shippingEmailedAt);
+  } catch (error) {
+    console.error('Falha ao enviar rastreamento do kit:', error);
+  }
+
+  const updated = await prisma.kitOrder.findUnique({
+    where: { id: order.id },
+    include: { contract: true },
+  });
+  if (!updated) throw new Error('Pedido do kit não encontrado após o despacho.');
+
+  await createSystemNotification({
+    restaurantId: order.restaurantId,
+    type: 'KIT_SHIPPED',
+    severity: 'INFO',
+    title: 'Kit enviado',
+    message: emailSent
+      ? `O kit foi enviado. Rastreamento: ${input.trackingCode}. Os dados também foram enviados por e-mail.`
+      : `O kit foi enviado. Rastreamento: ${input.trackingCode}. O envio do e-mail está pendente.`,
+    link: '/assinatura',
+    dedupeKey: `kit:${order.id}:shipped:${input.trackingCode}`,
+  });
+
   return updated;
 }
 
