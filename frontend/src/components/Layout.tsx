@@ -35,7 +35,7 @@ const links = [
   { to: '/controles', label: 'Controles', icon: ClipboardCheck },
   { to: '/relatorios', label: 'Dossiê e relatórios', icon: FileBarChart },
   { to: '/notificacoes', label: 'Notificações', icon: Bell },
-  { to: '/ia', label: 'IA', icon: Sparkles },
+  { to: '/ia', label: 'Sana · Assistente', icon: Sparkles },
   { to: '/produtos', label: 'Produtos', icon: PackagePlus },
   { to: '/funcionarios', label: 'Funcionários', icon: Users },
   { to: '/conta', label: 'Administração', icon: UserCog },
@@ -139,6 +139,23 @@ export function Layout() {
   }, []);
 
   useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
     let active = true;
     const loadUnread = () => {
       api<{ unread: number }>('/api/notifications/summary')
@@ -170,7 +187,7 @@ export function Layout() {
               to={item.to}
               onClick={() => setMobileMenuOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                `relative flex min-h-11 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${
                   isActive
                     ? 'bg-safe-soft text-safe-blue shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10'
@@ -224,14 +241,26 @@ export function Layout() {
         <SideMenuContent compact={desktopSidebarCollapsed} />
       </aside>
 
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur transition-colors dark:border-white/10 dark:bg-[#071b1d] lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <LogoBlock />
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur transition-colors dark:border-white/10 dark:bg-[#071b1d] sm:px-4 lg:hidden">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+          <Link to="/painel" className="flex min-w-0 items-center gap-2.5 rounded-2xl py-1">
+            <LogoImage compact />
+            <div className="min-w-0">
+              <p className="truncate text-base font-black leading-none text-safe-dark dark:text-white">
+                SafeKitchen
+              </p>
+              <p className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-safe-green">
+                Smart
+              </p>
+            </div>
+          </Link>
 
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
             className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-safe-dark shadow-sm transition hover:bg-slate-50"
+            aria-label="Abrir menu principal"
+            aria-expanded={mobileMenuOpen}
           >
             <Menu size={20} />
           </button>
@@ -245,7 +274,7 @@ export function Layout() {
             onClick={() => setMobileMenuOpen(false)}
           />
 
-          <div className="safe-scrollbar absolute inset-y-0 left-0 flex w-[88%] max-w-[320px] flex-col overflow-y-auto overscroll-contain bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl transition-colors dark:bg-[#071b1d]">
+          <div className="safe-scrollbar absolute inset-y-0 left-0 flex w-[min(88vw,340px)] flex-col overflow-y-auto overscroll-contain bg-white p-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl transition-colors dark:bg-[#071b1d] sm:p-4">
             <div className="sticky top-0 z-10 mb-3 flex items-center justify-between bg-white pb-2 dark:bg-[#071b1d]">
               <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-safe-green">
                 Menu
@@ -255,6 +284,7 @@ export function Layout() {
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-safe-dark transition hover:bg-slate-50"
+                aria-label="Fechar menu principal"
               >
                 <X size={18} />
               </button>
@@ -265,8 +295,8 @@ export function Layout() {
         </div>
       )}
 
-      <main className={`min-h-screen pb-24 transition-all ${sidebarWidthClass} lg:pb-0`}>
-        <div className="app-content p-4 md:p-6 lg:p-8">
+      <main className={`min-w-0 min-h-screen pb-8 transition-all ${sidebarWidthClass} lg:pb-0`}>
+        <div className="app-content min-w-0 p-3 sm:p-4 md:p-6 lg:p-8">
           <Outlet />
         </div>
       </main>

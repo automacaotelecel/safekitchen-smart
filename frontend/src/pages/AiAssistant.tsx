@@ -77,7 +77,7 @@ export function AiAssistant() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Não foi possível verificar a configuração da IA.'
+          : 'Não foi possível verificar a configuração da Sana.'
       );
     } finally {
       setChecking(false);
@@ -106,7 +106,7 @@ export function AiAssistant() {
 
   async function identify() {
     if (!imageUrl) {
-      setMessage('Tire uma foto ou escolha uma imagem antes de usar a IA.');
+      setMessage('Tire uma foto ou escolha uma imagem para a Sana analisar.');
       return;
     }
 
@@ -124,9 +124,9 @@ export function AiAssistant() {
       });
 
       setResult(data);
-      setMessage('IA respondeu. Confira as informações antes de usar no cadastro ou na etiqueta.');
+      setMessage('A Sana concluiu a leitura. Confira as sugestões antes de usar no cadastro ou na etiqueta.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao identificar produto com IA.');
+      setMessage(error instanceof Error ? error.message : 'A Sana não conseguiu identificar o produto.');
     } finally {
       setLoading(false);
     }
@@ -146,21 +146,26 @@ export function AiAssistant() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020]">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:rounded-[28px] sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.26em] text-safe-green">
-              Inteligência artificial
-            </p>
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#19d09c,#0a7c86)] text-white shadow-lg shadow-emerald-100">
+              <Sparkles size={25} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-safe-green sm:text-xs sm:tracking-[0.26em]">
+                Sana · assistente inteligente
+              </p>
 
-            <h1 className="mt-2 text-3xl font-black text-safe-dark dark:text-white">
-              Módulo de IA
-            </h1>
+              <h1 className="mt-2 text-3xl font-black text-safe-dark dark:text-white">
+                Olá, eu sou a Sana
+              </h1>
 
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-300">
-              Use uma foto para sugerir nome do produto, marca, lote visível, categoria e tipo de etiqueta. A IA não substitui a validação da nutricionista/responsável técnico.
-            </p>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-300">
+                Envie uma foto e eu ajudo a reconhecer o produto, a marca, o lote visível, a categoria e o tipo de etiqueta. Minhas sugestões sempre devem ser conferidas pela equipe responsável.
+              </p>
+            </div>
           </div>
 
           <button
@@ -169,20 +174,24 @@ export function AiAssistant() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-safe-dark transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#151515] dark:text-white dark:hover:bg-white/10"
           >
             <Sparkles size={16} />
-            Testar configuração
+            {checking ? 'Verificando Sana...' : 'Verificar Sana'}
           </button>
         </div>
 
+        <div className={`mt-5 inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${health?.enabled ? 'bg-emerald-50 text-emerald-700' : checking ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>
+          <span className={`h-2 w-2 rounded-full ${health?.enabled ? 'bg-emerald-500' : checking ? 'bg-slate-400' : 'bg-amber-500'}`} />
+          {checking ? 'Verificando disponibilidade' : health?.enabled ? 'Sana pronta para ajudar' : 'Sana temporariamente indisponível'}
+        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020]">
+        <div className="min-w-0 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:rounded-[28px] sm:p-5">
           <h2 className="text-xl font-black text-safe-dark dark:text-white">Foto para análise</h2>
 
           <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-[#151515]">
             {imageUrl ? (
               <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#202020]">
-                <img src={imageUrl} alt="Imagem para IA" className="max-h-[480px] w-full object-contain" />
+                <img src={imageUrl} alt="Imagem enviada para a Sana" className="max-h-[480px] w-full object-contain" />
 
                 <button
                   type="button"
@@ -226,7 +235,7 @@ export function AiAssistant() {
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-dark px-4 py-3 text-sm font-black text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
-              {loading ? 'Analisando imagem...' : 'Identificar com IA'}
+              {loading ? 'Sana está analisando...' : 'Analisar com a Sana'}
             </button>
           </div>
 
@@ -237,12 +246,12 @@ export function AiAssistant() {
           )}
         </div>
 
-        <aside className="h-fit rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020]">
-          <h2 className="text-xl font-black text-safe-dark dark:text-white">Resultado da IA</h2>
+        <aside className="h-fit min-w-0 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:rounded-[28px] sm:p-5">
+          <h2 className="text-xl font-black text-safe-dark dark:text-white">Sugestão da Sana</h2>
 
           {!result ? (
             <p className="mt-3 text-sm font-semibold leading-6 text-slate-500 dark:text-slate-300">
-              O resultado aparecerá aqui depois da análise. Use como sugestão e confira todos os dados antes de cadastrar ou gerar etiqueta.
+              Assim que eu analisar a foto, minhas sugestões aparecerão aqui. Confira os dados antes de cadastrar ou gerar a etiqueta.
             </p>
           ) : (
             <div className="mt-4 space-y-3 text-sm">

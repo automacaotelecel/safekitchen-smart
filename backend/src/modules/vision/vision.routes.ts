@@ -115,7 +115,7 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
 
   if (firstBrace === -1 || lastBrace === -1) {
     throw new ProviderError(
-      'A IA não retornou dados estruturados. Tente outra foto.',
+      'A Sana não conseguiu organizar os dados da imagem. Tente outra foto.',
       502,
       'INVALID_PROVIDER_RESPONSE'
     );
@@ -127,7 +127,7 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
     parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as Partial<GeminiSuggestion>;
   } catch {
     throw new ProviderError(
-      'A IA respondeu em formato inválido. Tente outra foto.',
+      'A Sana recebeu uma resposta inválida. Tente outra foto.',
       502,
       'INVALID_PROVIDER_JSON'
     );
@@ -167,7 +167,7 @@ function safeJsonParse(rawText: string): GeminiSuggestion {
     confidence,
     notes:
       text(parsed.notes) ||
-      'Confira nome, marca, lote e validade antes de salvar. A IA é apenas apoio operacional.',
+      'Confira nome, marca, lote e validade antes de salvar. A Sana é uma assistente e não substitui a conferência da equipe.',
   };
 }
 
@@ -231,7 +231,7 @@ async function findBestProductMatch(restaurantId: string, suggestion: GeminiSugg
 
 function buildGeminiRequestBody(imageBase64: string, mimeType: string) {
   const prompt = `
-Você é uma IA de apoio para o SafeKitchen Smart, um sistema de segurança dos alimentos.
+Você é Sana, a assistente inteligente do SafeKitchen Smart, um sistema de segurança dos alimentos.
 Leia a embalagem ou o rótulo visível na foto e sugira os dados para uma etiqueta sanitária.
 
 Regras:
@@ -336,7 +336,7 @@ async function askModel(
     }
 
     if (!response) {
-      throw new ProviderError('A IA não respondeu.', 503, 'NO_RESPONSE');
+      throw new ProviderError('A Sana não respondeu. Tente novamente.', 503, 'NO_RESPONSE');
     }
 
     const data = await response.json().catch(() => null);
@@ -346,7 +346,7 @@ async function askModel(
         data?.error?.message || data?.error?.status || `HTTP ${response.status}`;
 
       throw new ProviderError(
-        `Falha no serviço de IA: ${providerMessage}`,
+        `A Sana está temporariamente indisponível: ${providerMessage}`,
         response.status === 429 ? 429 : 503,
         String(data?.error?.status || response.status)
       );
@@ -359,7 +359,7 @@ async function askModel(
 
     if (!responseText) {
       throw new ProviderError(
-        'A IA não conseguiu ler essa imagem. Tente uma foto mais nítida.',
+        'A Sana não conseguiu ler essa imagem. Tente uma foto mais nítida.',
         422,
         'EMPTY_RESPONSE'
       );
@@ -387,7 +387,7 @@ async function askModel(
 async function askGemini(imageBase64: string, mimeType: string) {
   if (!env.geminiApiKey) {
     throw new ProviderError(
-      'IA não configurada no servidor. Configure GEMINI_API_KEY e faça um novo deploy.',
+      'A Sana ainda não foi configurada no servidor. Configure GEMINI_API_KEY e faça um novo deploy.',
       503,
       'NOT_CONFIGURED'
     );
@@ -417,7 +417,7 @@ async function askGemini(imageBase64: string, mimeType: string) {
     }
   }
 
-  throw lastError || new ProviderError('Nenhum modelo de IA disponível.', 503, 'NO_MODEL');
+  throw lastError || new ProviderError('A Sana está sem um modelo disponível no momento.', 503, 'NO_MODEL');
 }
 
 router.get('/health', (_req, res) => {
@@ -425,8 +425,8 @@ router.get('/health', (_req, res) => {
     enabled: Boolean(env.geminiApiKey),
     model: env.geminiModel,
     message: env.geminiApiKey
-      ? 'IA configurada e pronta para teste.'
-      : 'GEMINI_API_KEY não configurada no servidor.',
+      ? 'Sana configurada e pronta para ajudar.'
+      : 'Sana indisponível: GEMINI_API_KEY não configurada no servidor.',
   });
 });
 

@@ -21,7 +21,7 @@ export function Plans() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#f4f8f8] px-4 py-8 text-safe-dark sm:px-6 lg:px-8">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f8f8] px-3 py-5 text-safe-dark sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link to={authenticated ? '/painel' : '/'} className="inline-flex items-center gap-2 text-sm font-black text-safe-green">
@@ -31,9 +31,9 @@ export function Plans() {
             <ShieldCheck size={18} className="text-safe-green" /> Pagamento seguro pelo Mercado Pago
           </div>
         </header>
-        <section className="py-12 text-center">
-          <p className="text-xs font-black uppercase tracking-[0.26em] text-safe-green">Planos SafeKitchen</p>
-          <h1 className="mt-3 text-4xl font-black sm:text-5xl">Escolha o plano da sua operação</h1>
+        <section className="py-9 text-center sm:py-12">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-safe-green sm:text-xs sm:tracking-[0.26em]">Planos SafeKitchen</p>
+          <h1 className="mt-3 text-3xl font-black leading-tight sm:text-5xl">Escolha o plano da sua operação</h1>
           <p className="mx-auto mt-4 max-w-2xl text-base font-medium leading-7 text-slate-600">
             Escolha o kit ideal, pague a implantação e mantenha o sistema com uma mensalidade recorrente. Equipamentos adicionais podem ser incluídos sob orçamento.
           </p>

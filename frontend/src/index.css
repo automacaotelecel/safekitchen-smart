@@ -26,17 +26,35 @@
 
 html {
   scroll-behavior: smooth;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(25, 208, 156, 0.14), transparent 32rem),
     radial-gradient(circle at bottom right, rgba(113, 104, 217, 0.12), transparent 28rem),
     #f6fbfb;
   color: #0f172a;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
 }
 
 button,
@@ -47,7 +65,51 @@ a {
 input,
 select,
 textarea {
+  max-width: 100%;
   outline: none;
+}
+
+.app-content,
+.app-content > *,
+.app-content section,
+.app-content article,
+.app-content aside,
+.app-content form {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 639px) {
+  .app-content h1 {
+    font-size: 1.75rem !important;
+    line-height: 1.12 !important;
+    letter-spacing: -0.025em;
+    overflow-wrap: anywhere;
+  }
+
+  .app-content h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .app-content input,
+  .app-content select,
+  .app-content textarea {
+    font-size: 16px;
+  }
+
+  .app-content table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-content [class*="rounded-[28px]"],
+  .app-content [class*="rounded-[26px]"],
+  .app-content [class*="rounded-[2rem]"] {
+    border-radius: 1.25rem;
+  }
 }
 
 .safe-scrollbar::-webkit-scrollbar {

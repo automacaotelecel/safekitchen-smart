@@ -26,7 +26,7 @@ export function PlanCards({
   actionLabel: (plan: CommercialPlan) => string;
 }) {
   return (
-    <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
+    <div className="mx-auto grid min-w-0 max-w-5xl gap-4 sm:gap-5 lg:grid-cols-2">
       {(Array.isArray(plans) ? plans : []).filter(Boolean).map((plan) => {
         const Icon = icons[plan.code] || CreditCard;
         const kitItems = Array.isArray(plan.kitItems) ? plan.kitItems : [];
@@ -35,7 +35,7 @@ export function PlanCards({
         return (
           <article
             key={plan.code}
-            className={`relative flex flex-col rounded-[28px] border bg-white p-6 shadow-sm ${
+            className={`relative min-w-0 flex flex-col rounded-[24px] border bg-white p-5 shadow-sm sm:rounded-[28px] sm:p-6 ${
               plan.highlighted
                 ? 'border-safe-green ring-4 ring-safe-green/10'
                 : 'border-slate-200'
@@ -58,16 +58,16 @@ export function PlanCards({
             </div>
             <h2 className="mt-5 text-2xl font-black text-safe-dark">{plan.name}</h2>
             <p className="mt-1 text-xs font-black uppercase tracking-wider text-safe-green">{plan.audience}</p>
-            <p className="mt-2 min-h-12 text-sm font-medium leading-6 text-slate-500">
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-500 sm:min-h-12">
               {plan.description}
             </p>
             <div className="mt-5 rounded-2xl bg-safe-soft p-4">
               <p className="text-xs font-black uppercase tracking-wider text-slate-500">Kit de implantação</p>
-              <p className="mt-1 text-3xl font-black text-safe-dark">
+              <p className="mt-1 break-words text-2xl font-black text-safe-dark sm:text-3xl">
                 {formatMoney(plan.setupAmountCents, plan.currency)}
               </p>
             </div>
-            <p className="mt-4 text-4xl font-black text-safe-dark">
+            <p className="mt-4 flex flex-wrap items-baseline gap-1 break-words text-3xl font-black text-safe-dark sm:text-4xl">
               {formatMoney(plan.amountCents, plan.currency)}
               <span className="text-sm font-bold text-slate-500">/mês</span>
             </p>

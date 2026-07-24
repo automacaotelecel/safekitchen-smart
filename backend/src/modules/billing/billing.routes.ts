@@ -45,6 +45,22 @@ const kitCheckoutSchema = planSchema.extend({
   }),
 });
 
+function billingErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim()
+  ) {
+    return error.message.trim();
+  }
+
+  return fallback;
+}
+
 router.get('/plans', (_req, res) => {
   return ok(res, {
     enabled: env.mercadoPagoEnabled,
@@ -190,6 +206,12 @@ router.get('/subscription', async (req, res) => {
 
 router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
+  if (!env.mercadoPagoEnabled) {
+    return fail(res, 'Os pagamentos estão temporariamente indisponíveis.', 503);
+  }
+  if (!env.contractProviderConfigured) {
+    return fail(res, 'Os dados jurídicos do contrato ainda não foram configurados.', 503);
+  }
   const parsed = kitCheckoutSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Revise os dados do contratante, endereço e aceite.', 422, parsed.error.flatten());
   if (parsed.data.termsVersion !== env.contractTermsVersion) {
@@ -219,7 +241,9 @@ router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
     });
     return ok(res, { order, checkoutUrl: order.checkoutUrl }, 201);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar pagamento do kit.', 502);
+    const message = billingErrorMessage(error, 'Erro ao iniciar pagamento do kit.');
+    console.error(`[billing] Falha ao criar checkout do kit: ${message}`);
+    return fail(res, message, 502);
   }
 });
 
@@ -282,6 +306,9 @@ router.post('/contract/resend', requireRole('ADMIN'), async (req, res) => {
 
 router.post('/checkout', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
+  if (!env.mercadoPagoEnabled) {
+    return fail(res, 'Os pagamentos estão temporariamente indisponíveis.', 503);
+  }
   const parsed = planSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Plano inválido.', 422);
 
@@ -303,7 +330,9 @@ router.post('/checkout', requireRole('ADMIN'), async (req, res) => {
 
     return ok(res, { subscription, checkoutUrl: subscription.checkoutUrl }, 201);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar contratação.', 502);
+    const message = billingErrorMessage(error, 'Erro ao iniciar contratação.');
+    console.error(`[billing] Falha ao criar assinatura: ${message}`);
+    return fail(res, message, 502);
   }
 });
 

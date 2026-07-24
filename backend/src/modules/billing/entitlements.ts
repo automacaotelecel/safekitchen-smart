@@ -35,7 +35,7 @@ export async function assertAiQuota(restaurantId: string) {
     },
   });
   if (used >= plan.maxAiAnalysesPerMonth) {
-    throw new Error(`Limite mensal de ${plan.maxAiAnalysesPerMonth} análises de IA atingido.`);
+    throw new Error(`Limite mensal de ${plan.maxAiAnalysesPerMonth} análises da Sana atingido.`);
   }
   return plan;
 }

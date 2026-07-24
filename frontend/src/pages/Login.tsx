@@ -66,9 +66,9 @@ export function Login() {
       <div className="absolute right-[-10rem] top-20 h-96 w-96 rounded-full bg-emerald-300/25 blur-3xl" />
       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(34,211,238,0.12)_1px,transparent_1px)] [background-size:18px_18px] opacity-40" />
 
-      <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center p-4 lg:p-8">
-        <div className="grid w-full overflow-hidden rounded-[2.2rem] border border-white/10 bg-[#061923] shadow-[0_30px_90px_rgba(0,0,0,0.45)] lg:grid-cols-[1.15fr_.85fr]">
-          <div className="relative min-h-[560px] overflow-hidden bg-[linear-gradient(135deg,rgba(4,37,49,0.96),rgba(5,76,83,0.88)),url('/ref-dark.png')] bg-cover bg-center p-7 text-white lg:p-12">
+      <div className="relative mx-auto flex min-h-screen max-w-7xl items-stretch justify-center sm:items-center sm:p-4 lg:p-8">
+        <div className="grid w-full overflow-hidden bg-[#061923] shadow-[0_30px_90px_rgba(0,0,0,0.45)] sm:rounded-[2.2rem] sm:border sm:border-white/10 lg:grid-cols-[1.15fr_.85fr]">
+          <div className="relative hidden min-h-[560px] overflow-hidden bg-[linear-gradient(135deg,rgba(4,37,49,0.96),rgba(5,76,83,0.88)),url('/ref-dark.png')] bg-cover bg-center p-7 text-white lg:block lg:p-12">
             <div className="absolute inset-0 bg-[#021E27]/55" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,229,194,0.25),transparent_22rem)]" />
 
@@ -155,7 +155,7 @@ export function Login() {
 
           <form
             onSubmit={submit}
-            className="relative bg-[#071922] p-6 text-white sm:p-10 lg:p-14"
+            className="relative flex min-h-screen flex-col justify-center bg-[#071922] px-5 py-8 text-white sm:min-h-0 sm:p-10 lg:p-14"
           >
             <div className="mb-8 lg:hidden">
               <img
@@ -228,6 +228,7 @@ export function Login() {
               <Mail size={18} className="text-white/55" />
 
               <input
+                required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
@@ -244,6 +245,7 @@ export function Login() {
               <Lock size={18} className="text-white/55" />
 
               <input
+                required
                 type="password"
                 minLength={registering ? 8 : undefined}
                 value={password}

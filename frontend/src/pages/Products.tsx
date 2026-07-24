@@ -187,7 +187,7 @@ export function Products() {
     const imageBase64 = target === 'create' ? form.imageUrl : editForm.imageUrl;
 
     if (!imageBase64) {
-      setError('Adicione uma foto do produto antes de identificar com IA.');
+      setError('Adicione uma foto do produto antes de pedir a análise da Sana.');
       return;
     }
 
@@ -208,9 +208,9 @@ export function Products() {
         ? ` Produto parecido encontrado no cadastro: ${result.matchedProduct.name}.`
         : '';
 
-      setSuccess(`IA identificou o produto. Confira os dados antes de salvar.${exists}`);
+      setSuccess(`A Sana identificou o produto. Confira os dados antes de salvar.${exists}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao identificar produto com IA.');
+      setError(err instanceof Error ? err.message : 'A Sana não conseguiu identificar o produto.');
     } finally {
       setAiLoading(null);
     }
@@ -345,11 +345,11 @@ export function Products() {
             </h1>
 
             <p className="mt-2 text-slate-500 dark:text-slate-300">
-              Cadastre produtos manualmente ou use a IA para preencher os dados a partir de uma foto.
+              Cadastre produtos manualmente ou conte com a Sana para preencher os dados a partir de uma foto.
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid w-full grid-cols-3 gap-2 sm:gap-3 lg:w-auto">
             <StatCard label="Ativos" value={activeCount} />
             <StatCard label="Inativos" value={inactiveCount} />
             <StatCard label="Total" value={products.length} />
@@ -518,7 +518,7 @@ export function Products() {
         </h2>
 
         <p className="mt-2 text-xs font-semibold text-slate-500">
-          Tire uma foto ou selecione uma imagem. Depois clique em “Identificar com IA”.
+          Tire uma foto ou selecione uma imagem. Depois clique em “Analisar com a Sana”.
         </p>
 
         <form onSubmit={submit} className="mt-5 space-y-4">
@@ -670,7 +670,7 @@ function AiResultCard({ result }: { result: VisionIdentifyResponse | null }) {
     <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
       <div className="flex items-center gap-2 font-black">
         <Sparkles size={17} />
-        Sugestão da IA • confiança {confidencePercent(suggestion.confidence)}
+        Sugestão da Sana • confiança {confidencePercent(suggestion.confidence)}
       </div>
 
       <div className="mt-3 space-y-1 text-xs font-semibold">
@@ -762,7 +762,7 @@ function PhotoPicker({
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {aiLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {aiLoading ? 'Identificando...' : 'Identificar com IA'}
+          {aiLoading ? 'Sana está analisando...' : 'Analisar com a Sana'}
         </button>
       </div>
     </div>

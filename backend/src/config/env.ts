@@ -9,7 +9,9 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória.'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET deve ter pelo menos 16 caracteres.'),
   FRONTEND_URL: z.string().default('http://localhost:5174'),
-  BACKEND_URL: z.string().default('http://localhost:3333'),
+  BACKEND_URL: z.string().default(''),
+  RENDER_EXTERNAL_URL: z.string().default(''),
+  RENDER_EXTERNAL_HOSTNAME: z.string().default(''),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   GEMINI_FALLBACK_MODELS: z.string().default('gemini-2.5-flash-lite'),
@@ -70,6 +72,39 @@ const storageEnabled = Boolean(
     parsed.data.S3_SECRET_ACCESS_KEY
 );
 
+function trimBaseUrl(value: string) {
+  return value.trim().replace(/\/+$/, '');
+}
+
+function isLocalUrl(value: string) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(value);
+}
+
+const renderExternalUrl = trimBaseUrl(
+  parsed.data.RENDER_EXTERNAL_URL ||
+    (parsed.data.RENDER_EXTERNAL_HOSTNAME
+      ? `https://${parsed.data.RENDER_EXTERNAL_HOSTNAME}`
+      : '')
+);
+const configuredBackendUrl = trimBaseUrl(parsed.data.BACKEND_URL);
+const backendUrl =
+  parsed.data.NODE_ENV === 'production' &&
+  renderExternalUrl &&
+  (!configuredBackendUrl || isLocalUrl(configuredBackendUrl))
+    ? renderExternalUrl
+    : configuredBackendUrl ||
+      renderExternalUrl ||
+      `http://localhost:${parsed.data.PORT}`;
+
+if (
+  parsed.data.NODE_ENV === 'production' &&
+  (!backendUrl.startsWith('https://') || isLocalUrl(backendUrl))
+) {
+  throw new Error(
+    'Em produção, BACKEND_URL deve ser uma URL pública HTTPS. No Render ela é detectada automaticamente.'
+  );
+}
+
 export const env = {
   nodeEnv: parsed.data.NODE_ENV,
   isProduction: parsed.data.NODE_ENV === 'production',
@@ -77,7 +112,7 @@ export const env = {
   databaseUrl: parsed.data.DATABASE_URL,
   jwtSecret: parsed.data.JWT_SECRET,
   frontendUrl: parsed.data.FRONTEND_URL,
-  backendUrl: parsed.data.BACKEND_URL.replace(/\/$/, ''),
+  backendUrl,
   geminiApiKey: parsed.data.GEMINI_API_KEY,
   geminiModel: parsed.data.GEMINI_MODEL,
   geminiFallbackModels: parsed.data.GEMINI_FALLBACK_MODELS
