@@ -9,7 +9,7 @@ import { prisma } from '../../lib/prisma';
 import { createSystemNotification } from '../notifications/notifications.service';
 import { getCommercialPlan } from './plans';
 
-type DeliveryAddress = {
+type BusinessAddress = {
   postalCode: string;
   street: string;
   number: string;
@@ -21,17 +21,17 @@ type DeliveryAddress = {
 
 export type ContractSnapshot = {
   provider: { name: string; document: string; address: string; email: string; city: string };
-  customer: { name: string; email: string; document: string; phone?: string; address: DeliveryAddress };
+  customer: { name: string; email: string; document: string; phone?: string; address: BusinessAddress };
   plan: {
     code: string;
     name: string;
     setupAmountCents: number;
     monthlyAmountCents: number;
-    kitItems: string[];
+    implementationItems: string[];
     features: string[];
   };
   acceptedAt: string;
-  deliveryDays: number;
+  implementationDays: number;
   version: string;
 };
 
@@ -39,7 +39,7 @@ function money(cents: number) {
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function formatAddress(address: DeliveryAddress) {
+function formatAddress(address: BusinessAddress) {
   return `${address.street}, ${address.number}${address.complement ? `, ${address.complement}` : ''} - ${address.district}, ${address.city}/${address.state}, CEP ${address.postalCode}`;
 }
 
@@ -59,12 +59,12 @@ export function createContractSnapshot(input: {
   customerEmail: string;
   customerDocument: string;
   customerPhone?: string;
-  deliveryAddress: DeliveryAddress;
+  businessAddress: BusinessAddress;
   planCode: string;
   acceptedAt: Date;
 }): ContractSnapshot {
   if (!env.contractProviderConfigured) {
-    throw new Error('Configure os dados jurídicos do contrato no Render antes de vender kits.');
+    throw new Error('Configure os dados jurídicos do contrato no Render antes de oferecer a implantação.');
   }
   const plan = getCommercialPlan(input.planCode);
   if (!plan) throw new Error('Plano comercial inválido.');
@@ -82,18 +82,18 @@ export function createContractSnapshot(input: {
       email: input.customerEmail,
       document: input.customerDocument,
       phone: input.customerPhone,
-      address: input.deliveryAddress,
+      address: input.businessAddress,
     },
     plan: {
       code: plan.code,
       name: plan.name,
       setupAmountCents: plan.setupAmountCents,
       monthlyAmountCents: plan.amountCents,
-      kitItems: plan.kitItems,
+      implementationItems: plan.implementationItems,
       features: plan.features,
     },
     acceptedAt: input.acceptedAt.toISOString(),
-    deliveryDays: env.contractDeliveryDays,
+    implementationDays: env.contractImplementationDays,
     version: env.contractTermsVersion,
   };
 }
@@ -128,28 +128,28 @@ export async function renderContractPdf(contract: CommercialContract) {
   const paragraph = (value: string) => doc.text(value, { align: 'justify', lineGap: 2 }).moveDown(0.45);
 
   doc.font('Helvetica-Bold').fontSize(16).fillColor('#087f70').text('SAFEKITCHEN SMART', { align: 'center' });
-  doc.fontSize(12).fillColor('#102f35').text('CONTRATO DE FORNECIMENTO DE KIT E LICENÇA DE USO DE SOFTWARE', { align: 'center' });
+  doc.fontSize(12).fillColor('#102f35').text('CONTRATO DE IMPLANTAÇÃO E LICENÇA DE USO DE SOFTWARE', { align: 'center' });
   doc.moveDown(0.5).font('Helvetica').fontSize(9).fillColor('#52666a').text(`Contrato nº ${contract.contractNumber} · Versão ${contract.version}`, { align: 'center' });
 
   heading('1. PARTES');
   paragraph(`CONTRATADA: ${snapshot.provider.name}, documento ${snapshot.provider.document}, com endereço em ${snapshot.provider.address}, e-mail ${snapshot.provider.email}.`);
-  paragraph(`CONTRATANTE: ${snapshot.customer.name}, documento ${snapshot.customer.document}, e-mail ${snapshot.customer.email}${snapshot.customer.phone ? `, telefone ${snapshot.customer.phone}` : ''}, endereço de entrega ${formatAddress(snapshot.customer.address)}.`);
+  paragraph(`CONTRATANTE: ${snapshot.customer.name}, documento ${snapshot.customer.document}, e-mail ${snapshot.customer.email}${snapshot.customer.phone ? `, telefone ${snapshot.customer.phone}` : ''}, estabelecimento situado em ${formatAddress(snapshot.customer.address)}.`);
 
   heading('2. OBJETO');
-  paragraph(`Este contrato tem por objeto o fornecimento do kit ${snapshot.plan.name}, sua implantação e a licença mensal, pessoal, limitada, revogável e não transferível de uso do SafeKitchen Smart. O software auxilia controles operacionais e não substitui a responsabilidade técnica, sanitária ou legal do estabelecimento.`);
-  paragraph(`Itens do kit: ${snapshot.plan.kitItems.join('; ')}. Recursos digitais principais: ${snapshot.plan.features.join('; ')}.`);
+  paragraph(`Este contrato tem por objeto a implantação assistida do plano ${snapshot.plan.name} e a licença mensal, pessoal, limitada, revogável e não transferível de uso do SafeKitchen Smart. O software auxilia controles operacionais e não substitui a responsabilidade técnica, sanitária ou legal do estabelecimento.`);
+  paragraph(`Serviços de implantação: ${snapshot.plan.implementationItems.join('; ')}. Recursos digitais principais: ${snapshot.plan.features.join('; ')}.`);
 
   heading('3. PREÇO E PAGAMENTO');
-  paragraph(`O CONTRATANTE pagará ${money(snapshot.plan.setupAmountCents)} pelo kit e implantação, em cobrança única, e ${money(snapshot.plan.monthlyAmountCents)} por mês pela licença e serviços digitais. A mensalidade será cobrada pelo Mercado Pago conforme autorização do CONTRATANTE. Tarifas de internet, etiquetas adicionais, equipamentos extras e integrações não descritas acima não estão incluídas.`);
+  paragraph(`O CONTRATANTE pagará ${money(snapshot.plan.setupAmountCents)} pela implantação, em cobrança única, e ${money(snapshot.plan.monthlyAmountCents)} por mês pela licença e pelos serviços digitais. A mensalidade será cobrada pelo Mercado Pago somente após sua autorização. Internet, insumos, equipamentos, deslocamentos presenciais e integrações não descritas neste contrato não estão incluídos.`);
 
-  heading('4. ATIVAÇÃO, ENTREGA E IMPLANTAÇÃO');
-  paragraph(`O acesso operacional será liberado após a confirmação do pagamento do kit, da autorização da mensalidade e do recebimento dos equipamentos pelo CONTRATANTE. O prazo estimado de despacho é de até ${snapshot.deliveryDays} dias úteis, contado da confirmação dos dados e do pagamento, salvo indisponibilidade comunicada ao CONTRATANTE. O CONTRATANTE deverá conferir os itens recebidos e comunicar divergências sem demora indevida.`);
+  heading('4. IMPLANTAÇÃO E ATIVAÇÃO');
+  paragraph(`Após a confirmação do pagamento da taxa, a CONTRATADA entrará em contato para iniciar ou agendar a implantação remota em até ${snapshot.implementationDays} dias úteis, contados do fornecimento, pelo CONTRATANTE, das informações e dos acessos necessários. A implantação será considerada concluída após a configuração prevista no plano e o treinamento inicial. O acesso operacional completo será liberado após a conclusão da implantação e a autorização da mensalidade.`);
 
   heading('5. VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO');
-  paragraph('A licença mensal vigorará por prazo indeterminado, com renovação automática a cada mês. O CONTRATANTE poderá solicitar cancelamento pelos canais disponibilizados. O cancelamento interrompe cobranças futuras, sem apagar obrigações vencidas. A devolução do kit e eventual reembolso observarão a legislação aplicável, inclusive o direito de arrependimento quando cabível, o estado dos produtos e os custos já efetivamente prestados permitidos por lei.');
+  paragraph('A licença mensal vigorará por prazo indeterminado, com renovação automática a cada mês. O CONTRATANTE poderá solicitar o cancelamento pelos canais disponibilizados. O cancelamento interrompe cobranças futuras, sem apagar obrigações vencidas. Reembolsos da implantação observarão a legislação aplicável, o direito de arrependimento quando cabível e a proporção dos serviços comprovadamente executados, nos limites permitidos por lei.');
 
-  heading('6. EQUIPAMENTOS E GARANTIA');
-  paragraph('Os equipamentos devem ser usados conforme os manuais dos fabricantes. Defeitos serão tratados conforme a garantia legal e, quando existente, a garantia do fabricante. Danos por queda, líquido, instalação inadequada, violação, uso incompatível ou desgaste de consumíveis não são cobertos além do exigido pela legislação aplicável.');
+  heading('6. REQUISITOS TÉCNICOS E INTEGRAÇÕES');
+  paragraph('A implantação é realizada remotamente. O CONTRATANTE deverá disponibilizar conexão com a internet, computador ou dispositivo compatível, usuários responsáveis e as informações necessárias à configuração. Impressoras, etiquetas, termômetros e demais equipamentos não estão incluídos, salvo proposta comercial escrita em separado. Integrações dependem de compatibilidade técnica, documentação e acesso fornecidos pelo fabricante do dispositivo.');
 
   heading('7. SOFTWARE, DISPONIBILIDADE E RESPONSABILIDADES');
   paragraph('A CONTRATADA realizará esforços razoáveis para manter o serviço disponível, podendo efetuar manutenções e atualizações. O CONTRATANTE é responsável por usuários, senhas, conexão, cadastros, conferência de etiquetas, medições, validades e decisões operacionais. Resultados de inteligência artificial devem ser conferidos por pessoa habilitada antes do uso.');
@@ -179,8 +179,8 @@ function htmlEscape(value: string) {
 export async function emailContract(contractId: string, forceResend = false) {
   const contract = await prisma.commercialContract.findUnique({ where: { id: contractId } });
   if (!contract) throw new Error('Contrato não encontrado.');
-  if (!['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'].includes(contract.status)) {
-    throw new Error('O pagamento do kit ainda não foi confirmado.');
+  if (!['IMPLEMENTATION_PAID_PENDING_ACTIVATION', 'ACTIVE'].includes(contract.status)) {
+    throw new Error('O pagamento da implantação ainda não foi confirmado.');
   }
   if (contract.emailedAt && !forceResend) return contract;
 
@@ -204,19 +204,19 @@ export async function emailContract(contractId: string, forceResend = false) {
             <div style="padding:28px">
               <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
               <p style="font-size:16px;line-height:1.65;color:#425b60">
-                Confirmamos o pagamento do kit <strong>${htmlEscape(snapshot.plan.name)}</strong>.
+                Confirmamos o pagamento da implantação do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>.
                 É um prazer receber você no SafeKitchen Smart.
               </p>
               <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
                 <p style="margin:0 0 8px"><strong>Contrato:</strong> ${htmlEscape(contract.contractNumber)}</p>
-                <p style="margin:0 0 8px"><strong>Kit e implantação:</strong> ${money(snapshot.plan.setupAmountCents)}</p>
+                <p style="margin:0 0 8px"><strong>Taxa de implantação:</strong> ${money(snapshot.plan.setupAmountCents)}</p>
                 <p style="margin:0"><strong>Mensalidade após a ativação:</strong> ${money(snapshot.plan.monthlyAmountCents)}</p>
               </div>
               <h2 style="font-size:18px;margin:24px 0 10px">Próximas etapas</h2>
               <ol style="padding-left:22px;line-height:1.7;color:#425b60">
-                <li>Vamos preparar e despachar o kit em até ${snapshot.deliveryDays} dias úteis.</li>
-                <li>Quando ele for enviado, você receberá o código de rastreamento por e-mail.</li>
-                <li>Depois do recebimento, confirme a entrega e autorize a mensalidade para liberar o acesso operacional.</li>
+                <li>Nossa equipe entrará em contato para agendar a implantação remota em até ${snapshot.implementationDays} dias úteis.</li>
+                <li>Você receberá a confirmação do agendamento e as orientações por e-mail.</li>
+                <li>Depois da implantação, autorize a mensalidade para liberar o acesso operacional completo.</li>
               </ol>
               <p style="font-size:15px;line-height:1.65;color:#425b60">
                 O contrato com o registro do aceite eletrônico está anexado em PDF. Guarde-o junto com o comprovante de pagamento.
@@ -268,8 +268,8 @@ export async function emailWelcome(contractId: string, forceResend = false) {
             <div style="padding:28px">
               <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
               <p style="font-size:16px;line-height:1.65;color:#425b60">
-                O recebimento do kit e a assinatura do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>
-                foram confirmados. Seu acesso operacional está liberado.
+                A implantação e a assinatura do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>
+                foram confirmadas. Seu acesso operacional está liberado.
               </p>
               <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
                 <p style="margin:0 0 8px"><strong>Plano vigente:</strong> ${htmlEscape(snapshot.plan.name)}</p>
@@ -314,20 +314,24 @@ export async function emailWelcome(contractId: string, forceResend = false) {
 }
 
 export async function activateContractIfEligible(restaurantId: string) {
-  const [kitOrder, subscription] = await Promise.all([
-    prisma.kitOrder.findFirst({
+  const [implementationOrder, subscription] = await Promise.all([
+    prisma.implementationOrder.findFirst({
       where: { restaurantId, status: 'APPROVED' },
       orderBy: { paidAt: 'desc' },
       include: { contract: true },
     }),
     prisma.subscription.findUnique({ where: { restaurantId } }),
   ]);
-  if (!kitOrder?.contract || !kitOrder.deliveredAt || subscription?.status !== 'ACTIVE') {
+  if (
+    !implementationOrder?.contract ||
+    !implementationOrder.completedAt ||
+    subscription?.status !== 'ACTIVE'
+  ) {
     return null;
   }
 
   const plan = getCommercialPlan(subscription.planCode);
-  if (!plan || plan.code !== kitOrder.planCode) return null;
+  if (!plan || plan.code !== implementationOrder.planCode) return null;
 
   const contract = await prisma.$transaction(async (tx) => {
     await tx.restaurant.update({
@@ -340,8 +344,11 @@ export async function activateContractIfEligible(restaurantId: string) {
       },
     });
     return tx.commercialContract.update({
-      where: { id: kitOrder.contract!.id },
-      data: { status: 'ACTIVE', activatedAt: kitOrder.contract!.activatedAt || new Date() },
+      where: { id: implementationOrder.contract!.id },
+      data: {
+        status: 'ACTIVE',
+        activatedAt: implementationOrder.contract!.activatedAt || new Date(),
+      },
     });
   });
 

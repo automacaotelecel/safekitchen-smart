@@ -16,7 +16,7 @@ export type CommercialPlan = {
   maxLabelsPerMonth: number | null;
   maxAiAnalysesPerMonth: number;
   maxDevices: number;
-  kitItems: string[];
+  implementationItems: string[];
   features: string[];
 };
 
@@ -30,7 +30,7 @@ export function getCommercialPlans(): CommercialPlan[] {
       code: 'START',
       name: 'SKS Start',
       audience: 'Pequenos negócios',
-      description: 'Kit de implantação para começar com etiquetas e controle de temperatura manual.',
+      description: 'Implantação assistida para organizar etiquetas, registros e temperatura manual.',
       setupAmountCents: cents(env.planStartSetupPrice),
       amountCents: cents(env.planStartMonthlyPrice),
       currency: 'BRL',
@@ -40,25 +40,25 @@ export function getCommercialPlans(): CommercialPlan[] {
       maxLabelsPerMonth: 1_000,
       maxAiAnalysesPerMonth: 100,
       maxDevices: 2,
-      kitItems: [
-        'Impressora Nimbot B21',
-        '2 rolos de etiquetas',
-        '2 termômetros simples para equipamentos',
-        '1 termômetro simples de espeto',
-        'Registro de temperatura manual',
+      implementationItems: [
+        'Configuração inicial da operação',
+        'Cadastro do estabelecimento e usuários',
+        'Configuração do sistema de etiquetas',
+        'Configuração da impressão pelo sistema',
+        'Treinamento remoto de implantação',
       ],
       features: [
-        'Etiquetas e histórico',
-        'Documentos e vencimentos',
-        'Alertas internos e por e-mail',
-        'Dossiê de conformidade em PDF',
+        'Etiquetas, impressão e registros digitais',
+        'Controle e histórico de temperatura manual',
+        'Documentos e alertas de vencimento',
+        'Relatórios operacionais básicos',
       ],
     },
     {
       code: 'PRO',
       name: 'SKS Pro',
       audience: 'Médios e grandes negócios',
-      description: 'Implantação completa com equipamentos integrados e automação de temperatura.',
+      description: 'Implantação avançada com automação de temperatura, alertas e relatórios gerenciais.',
       setupAmountCents: cents(env.planProSetupPrice),
       amountCents: cents(env.planProMonthlyPrice),
       currency: 'BRL',
@@ -68,18 +68,18 @@ export function getCommercialPlans(): CommercialPlan[] {
       maxLabelsPerMonth: null,
       maxAiAnalysesPerMonth: 1_000,
       maxDevices: 25,
-      kitItems: [
-        'Impressora Zebra',
-        '2 rolos de etiquetas',
-        '2 termômetros automáticos integrados',
-        '1 termômetro inteligente de espeto',
-        'Registro de temperatura automático',
+      implementationItems: [
+        'Configuração avançada da operação',
+        'Cadastro estruturado da equipe',
+        'Configuração personalizada de etiquetas',
+        'Integração com dispositivos compatíveis',
+        'Treinamento remoto completo',
       ],
       features: [
         'Tudo do SKS Start',
         'Etiquetas sem limite mensal',
-        '1.000 análises de imagem por mês',
-        'Até 25 dispositivos de temperatura',
+        'Temperatura automatizada e alertas',
+        'Relatórios avançados e até 25 dispositivos',
       ],
     },
   ];

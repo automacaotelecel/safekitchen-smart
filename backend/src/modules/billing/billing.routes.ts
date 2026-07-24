@@ -23,24 +23,24 @@ import {
 } from './billing.service';
 import { emailContract, renderContractPdf } from './contracts.service';
 import {
-  confirmKitDelivery,
-  createKitCheckout,
-  markKitShipped,
-  syncKitPayment,
-} from './kits.service';
+  completeImplementation,
+  createImplementationCheckout,
+  scheduleImplementation,
+  syncImplementationPayment,
+} from './implementations.service';
 import { getCommercialPlan, getCommercialPlans, type PlanCode } from './plans';
 
 const router = Router();
 const planSchema = z.object({
   planCode: z.enum(['START', 'PRO']),
 });
-const kitCheckoutSchema = planSchema.extend({
+const implementationCheckoutSchema = planSchema.extend({
   customerName: z.string().trim().min(3).max(150),
   customerDocument: z.string().trim().min(11).max(20),
   customerPhone: z.string().trim().max(30).optional(),
   acceptedTerms: z.literal(true),
   termsVersion: z.string().trim().min(1),
-  deliveryAddress: z.object({
+  businessAddress: z.object({
     postalCode: z.string().trim().min(8).max(10),
     street: z.string().trim().min(3).max(150),
     number: z.string().trim().min(1).max(20),
@@ -50,11 +50,15 @@ const kitCheckoutSchema = planSchema.extend({
     state: z.string().trim().length(2).transform((value) => value.toUpperCase()),
   }),
 });
-const kitShipmentSchema = z.object({
+const implementationScheduleSchema = z.object({
   orderId: z.string().trim().min(1),
-  trackingCode: z.string().trim().min(3).max(100),
-  trackingUrl: z.string().trim().url().max(500).optional(),
+  scheduledFor: z.string().datetime({ offset: true }),
+  meetingUrl: z.string().trim().url().max(500).optional(),
+  notes: z.string().trim().max(1000).optional(),
   forceResend: z.boolean().optional().default(false),
+});
+const implementationCompletionSchema = z.object({
+  orderId: z.string().trim().min(1),
 });
 const testEmailSchema = z.object({
   to: z.string().trim().email(),
@@ -62,7 +66,7 @@ const testEmailSchema = z.object({
 
 function requireBillingOperations(req: Request, res: Response, next: NextFunction) {
   if (!env.billingOperationsSecret) {
-    return fail(res, 'Operação de kits não configurada no servidor.', 503);
+    return fail(res, 'Operação de implantação não configurada no servidor.', 503);
   }
 
   const received = req.get('x-operations-secret') || '';
@@ -79,7 +83,7 @@ function requireBillingOperations(req: Request, res: Response, next: NextFunctio
 router.get('/plans', (_req, res) => {
   return ok(res, {
     enabled: env.mercadoPagoEnabled,
-    activationPolicy: 'KIT_AND_SUBSCRIPTION_CONFIRMED',
+    activationPolicy: 'IMPLEMENTATION_AND_SUBSCRIPTION_CONFIRMED',
     contractConfigured: env.contractProviderConfigured,
     contractTermsVersion: env.contractTermsVersion,
     contractProvider: env.contractProviderConfigured
@@ -88,18 +92,20 @@ router.get('/plans', (_req, res) => {
           document: env.contractProviderDocument,
           email: env.contractProviderEmail,
           city: env.contractCity,
-          deliveryDays: env.contractDeliveryDays,
+          implementationDays: env.contractImplementationDays,
         }
       : null,
     plans: getCommercialPlans(),
   });
 });
 
-router.get('/operations/kit-orders', requireBillingOperations, async (_req, res) => {
-  const orders = await prisma.kitOrder.findMany({
+router.get('/operations/implementations', requireBillingOperations, async (_req, res) => {
+  const orders = await prisma.implementationOrder.findMany({
     where: {
       status: 'APPROVED',
-      fulfillmentStatus: { in: ['PREPARING', 'SHIPPED'] },
+      implementationStatus: {
+        in: ['AWAITING_SCHEDULING', 'SCHEDULED'],
+      },
     },
     orderBy: { paidAt: 'asc' },
     select: {
@@ -109,12 +115,13 @@ router.get('/operations/kit-orders', requireBillingOperations, async (_req, res)
       customerName: true,
       payerEmail: true,
       paidAt: true,
-      fulfillmentStatus: true,
-      shippedAt: true,
-      trackingCode: true,
-      trackingUrl: true,
-      shippingEmailedAt: true,
-      shippingEmailError: true,
+      implementationStatus: true,
+      scheduledAt: true,
+      scheduledFor: true,
+      meetingUrl: true,
+      scheduleNotes: true,
+      scheduleEmailedAt: true,
+      scheduleEmailError: true,
       contract: { select: { contractNumber: true } },
     },
   });
@@ -148,28 +155,54 @@ router.post('/operations/test-email', requireBillingOperations, async (req, res)
   }
 });
 
-router.post('/operations/kit-shipped', requireBillingOperations, async (req, res) => {
-  const parsed = kitShipmentSchema.safeParse(req.body);
+router.post('/operations/implementation-scheduled', requireBillingOperations, async (req, res) => {
+  const parsed = implementationScheduleSchema.safeParse(req.body);
   if (!parsed.success) {
-    return fail(res, 'Revise o pedido e os dados de rastreamento.', 422, parsed.error.flatten());
+    return fail(res, 'Revise o pedido, a data e os dados do agendamento.', 422, parsed.error.flatten());
   }
 
   try {
-    const order = await markKitShipped(parsed.data);
+    const order = await scheduleImplementation({
+      orderId: parsed.data.orderId,
+      scheduledFor: new Date(parsed.data.scheduledFor),
+      meetingUrl: parsed.data.meetingUrl,
+      notes: parsed.data.notes,
+      forceResend: parsed.data.forceResend,
+    });
     await recordAudit({
       restaurantId: order.restaurantId,
-      action: 'KIT_SHIPPED',
-      entity: 'KitOrder',
+      action: 'IMPLEMENTATION_SCHEDULED',
+      entity: 'ImplementationOrder',
       entityId: order.id,
       metadata: {
-        trackingCode: order.trackingCode,
-        trackingUrl: order.trackingUrl,
-        shippingEmailedAt: order.shippingEmailedAt?.toISOString() || null,
+        scheduledFor: order.scheduledFor?.toISOString() || null,
+        meetingUrl: order.meetingUrl,
+        scheduleEmailedAt: order.scheduleEmailedAt?.toISOString() || null,
       },
     });
     return ok(res, order);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao registrar despacho.', 409);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao registrar agendamento.', 409);
+  }
+});
+
+router.post('/operations/implementation-completed', requireBillingOperations, async (req, res) => {
+  const parsed = implementationCompletionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return fail(res, 'Informe a implantação que foi concluída.', 422);
+  }
+
+  try {
+    const result = await completeImplementation(parsed.data.orderId);
+    await recordAudit({
+      restaurantId: result.order.restaurantId,
+      action: 'IMPLEMENTATION_COMPLETED',
+      entity: 'ImplementationOrder',
+      entityId: result.order.id,
+    });
+    return ok(res, result);
+  } catch (error) {
+    return fail(res, error instanceof Error ? error.message : 'Erro ao concluir implantação.', 409);
   }
 });
 
@@ -227,7 +260,7 @@ router.post('/webhooks/mercado-pago', async (req, res) => {
       const result = await syncMercadoPagoInvoice(dataId);
       restaurantId = result.subscription.restaurantId;
     } else if (eventType === 'payment' && dataId) {
-      const order = await syncKitPayment(dataId);
+      const order = await syncImplementationPayment(dataId);
       restaurantId = order.restaurantId;
     }
 
@@ -253,7 +286,7 @@ router.use(authMiddleware);
 router.get('/subscription', async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
-  const [restaurant, subscription, kitOrder, contract] = await Promise.all([
+  const [restaurant, subscription, implementationOrder, contract] = await Promise.all([
     prisma.restaurant.findUnique({
       where: { id: req.user.restaurantId },
       select: {
@@ -265,7 +298,7 @@ router.get('/subscription', async (req, res) => {
       },
     }),
     prisma.subscription.findUnique({ where: { restaurantId: req.user.restaurantId } }),
-    prisma.kitOrder.findFirst({
+    prisma.implementationOrder.findFirst({
       where: { restaurantId: req.user.restaurantId },
       orderBy: { createdAt: 'desc' },
     }),
@@ -292,23 +325,23 @@ router.get('/subscription', async (req, res) => {
     enabled: env.mercadoPagoEnabled,
     restaurant,
     subscription,
-    kitOrder,
+    implementationOrder,
     contract,
     contractConfigured: env.contractProviderConfigured,
     currentPlan: restaurant ? getCommercialPlan(restaurant.plan) || null : null,
   });
 });
 
-router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
+router.post('/implementation-checkout', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
-  const parsed = kitCheckoutSchema.safeParse(req.body);
+  const parsed = implementationCheckoutSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Revise os dados do contratante, endereço e aceite.', 422, parsed.error.flatten());
   if (parsed.data.termsVersion !== env.contractTermsVersion) {
     return fail(res, 'Os termos foram atualizados. Recarregue a página antes de aceitar.', 409);
   }
 
   try {
-    const order = await createKitCheckout({
+    const order = await createImplementationCheckout({
       restaurantId: req.user.restaurantId,
       userId: req.user.userId,
       payerEmail: req.user.email,
@@ -316,51 +349,34 @@ router.post('/kit-checkout', requireRole('ADMIN'), async (req, res) => {
       customerName: parsed.data.customerName,
       customerDocument: parsed.data.customerDocument,
       customerPhone: parsed.data.customerPhone,
-      deliveryAddress: parsed.data.deliveryAddress,
+      businessAddress: parsed.data.businessAddress,
       acceptedIp: req.ip,
       acceptedUserAgent: req.get('user-agent'),
     });
     await recordAudit({
       restaurantId: req.user.restaurantId,
       userId: req.user.userId,
-      action: 'KIT_CHECKOUT_CREATED',
-      entity: 'KitOrder',
+      action: 'IMPLEMENTATION_CHECKOUT_CREATED',
+      entity: 'ImplementationOrder',
       entityId: order.id,
       metadata: { planCode: order.planCode, contractId: order.contract?.id },
     });
     return ok(res, { order, checkoutUrl: order.checkoutUrl }, 201);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar pagamento do kit.', 502);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar pagamento da implantação.', 502);
   }
 });
 
-router.post('/kit-sync', requireRole('ADMIN'), async (req, res) => {
+router.post('/implementation-sync', requireRole('ADMIN'), async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
   const parsed = z.object({ paymentId: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) return fail(res, 'Identificador do pagamento ausente.', 422);
   try {
-    const order = await syncKitPayment(parsed.data.paymentId);
+    const order = await syncImplementationPayment(parsed.data.paymentId);
     if (order.restaurantId !== req.user.restaurantId) return fail(res, 'Pagamento não pertence a esta conta.', 403);
     return ok(res, order);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao sincronizar o kit.', 502);
-  }
-});
-
-router.post('/kit-confirm-delivery', requireRole('ADMIN'), async (req, res) => {
-  if (!req.user) return fail(res, 'Não autenticado.', 401);
-  try {
-    const result = await confirmKitDelivery(req.user.restaurantId);
-    await recordAudit({
-      restaurantId: req.user.restaurantId,
-      userId: req.user.userId,
-      action: 'CONFIRM_DELIVERY',
-      entity: 'KitOrder',
-      entityId: result.order.id,
-    });
-    return ok(res, result);
-  } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao confirmar recebimento.', 409);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao sincronizar a implantação.', 502);
   }
 });
 
@@ -369,7 +385,7 @@ router.get('/contract/pdf', requireRole('ADMIN', 'MANAGER'), async (req, res) =>
   const contract = await prisma.commercialContract.findFirst({
     where: {
       restaurantId: req.user.restaurantId,
-      status: { in: ['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'] },
+      status: { in: ['IMPLEMENTATION_PAID_PENDING_ACTIVATION', 'ACTIVE'] },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -385,7 +401,7 @@ router.post('/contract/resend', requireRole('ADMIN'), async (req, res) => {
   const contract = await prisma.commercialContract.findFirst({
     where: {
       restaurantId: req.user.restaurantId,
-      status: { in: ['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'] },
+      status: { in: ['IMPLEMENTATION_PAID_PENDING_ACTIVATION', 'ACTIVE'] },
     },
     orderBy: { createdAt: 'desc' },
   });

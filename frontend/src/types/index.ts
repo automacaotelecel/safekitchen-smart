@@ -267,7 +267,7 @@ export type CommercialPlan = {
   maxLabelsPerMonth: number | null;
   maxAiAnalysesPerMonth: number;
   maxDevices: number;
-  kitItems: string[];
+  implementationItems: string[];
   features: string[];
 };
 
@@ -283,7 +283,7 @@ export type SubscriptionInfo = {
   canceledAt?: string | null;
 };
 
-export type KitOrderInfo = {
+export type ImplementationOrderInfo = {
   id: string;
   planCode: PlanCode;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REFUNDED' | 'ERROR' | string;
@@ -292,13 +292,14 @@ export type KitOrderInfo = {
   currency: string;
   providerPaymentId?: string | null;
   paidAt?: string | null;
-  fulfillmentStatus?: 'AWAITING_PAYMENT' | 'PREPARING' | 'SHIPPED' | 'DELIVERED' | string;
-  shippedAt?: string | null;
-  trackingCode?: string | null;
-  trackingUrl?: string | null;
-  shippingEmailedAt?: string | null;
-  shippingEmailError?: string | null;
-  deliveredAt?: string | null;
+  implementationStatus?: 'AWAITING_PAYMENT' | 'AWAITING_SCHEDULING' | 'SCHEDULED' | 'COMPLETED' | string;
+  scheduledAt?: string | null;
+  scheduledFor?: string | null;
+  meetingUrl?: string | null;
+  scheduleNotes?: string | null;
+  scheduleEmailedAt?: string | null;
+  scheduleEmailError?: string | null;
+  completedAt?: string | null;
 };
 
 export type CommercialContractInfo = {

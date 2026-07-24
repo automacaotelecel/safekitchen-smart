@@ -1,4 +1,4 @@
-import { Check, CreditCard, PackageCheck, Sparkles, Zap, type LucideIcon } from 'lucide-react';
+import { Check, CreditCard, Settings2, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 
 import type { CommercialPlan, PlanCode } from '../types';
 
@@ -29,7 +29,9 @@ export function PlanCards({
     <div className="mx-auto grid min-w-0 max-w-5xl gap-4 sm:gap-5 lg:grid-cols-2">
       {(Array.isArray(plans) ? plans : []).filter(Boolean).map((plan) => {
         const Icon = icons[plan.code] || CreditCard;
-        const kitItems = Array.isArray(plan.kitItems) ? plan.kitItems : [];
+        const implementationItems = Array.isArray(plan.implementationItems)
+          ? plan.implementationItems
+          : [];
         const features = Array.isArray(plan.features) ? plan.features : [];
         const selected = currentPlan === plan.code;
         return (
@@ -62,7 +64,7 @@ export function PlanCards({
               {plan.description}
             </p>
             <div className="mt-5 rounded-2xl bg-safe-soft p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-slate-500">Kit de implantação</p>
+              <p className="text-xs font-black uppercase tracking-wider text-slate-500">Taxa de implantação</p>
               <p className="mt-1 break-words text-2xl font-black text-safe-dark sm:text-3xl">
                 {formatMoney(plan.setupAmountCents, plan.currency)}
               </p>
@@ -72,9 +74,9 @@ export function PlanCards({
               <span className="text-sm font-bold text-slate-500">/mês</span>
             </p>
             <div className="mt-6 border-t border-slate-100 pt-5">
-              <p className="mb-3 flex items-center gap-2 text-sm font-black text-safe-dark"><PackageCheck size={18} className="text-safe-green" /> Equipamentos incluídos</p>
+              <p className="mb-3 flex items-center gap-2 text-sm font-black text-safe-dark"><Settings2 size={18} className="text-safe-green" /> O que será configurado</p>
               <div className="space-y-3 text-sm font-semibold text-slate-600">
-                {kitItems.map((item) => <div key={item} className="flex items-start gap-2"><Check size={17} className="mt-0.5 shrink-0 text-safe-green" /><span>{item}</span></div>)}
+                {implementationItems.map((item) => <div key={item} className="flex items-start gap-2"><Check size={17} className="mt-0.5 shrink-0 text-safe-green" /><span>{item}</span></div>)}
               </div>
             </div>
             <div className="mt-6 space-y-3 text-sm font-semibold text-slate-600">

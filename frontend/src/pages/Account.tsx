@@ -201,8 +201,8 @@ export function Account() {
   const statusLabel: Record<string, string> = {
     ACTIVE: 'Ativo',
     PENDING: 'Aguardando contratação',
-    PENDING_KIT: 'Aguardando kit',
-    AWAITING_DELIVERY: 'Aguardando entrega',
+    PENDING_IMPLEMENTATION: 'Implantação pendente',
+    AWAITING_IMPLEMENTATION: 'Aguardando implantação',
     PAST_DUE: 'Pagamento pendente',
     CANCELED: 'Cancelado',
     TRIALING: 'Teste antigo',

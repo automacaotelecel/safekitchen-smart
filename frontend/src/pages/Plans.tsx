@@ -35,7 +35,7 @@ export function Plans() {
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-safe-green sm:text-xs sm:tracking-[0.26em]">Planos SafeKitchen</p>
           <h1 className="mt-3 text-3xl font-black leading-tight sm:text-5xl">Escolha o plano da sua operação</h1>
           <p className="mx-auto mt-4 max-w-2xl text-base font-medium leading-7 text-slate-600">
-            Escolha o kit ideal, pague a implantação e mantenha o sistema com uma mensalidade recorrente. Equipamentos adicionais podem ser incluídos sob orçamento.
+            Escolha o nível de implantação, configure sua operação com nossa equipe e mantenha o sistema com uma licença mensal.
           </p>
         </section>
         {error ? (

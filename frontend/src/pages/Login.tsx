@@ -192,7 +192,7 @@ export function Login() {
 
             <p className="mt-2 text-sm font-semibold text-white/65">
               {registering
-                ? 'Cadastre sua empresa para escolher o kit e concluir a contratação.'
+                ? 'Cadastre sua empresa para escolher o plano e solicitar a implantação.'
                 : 'Acesse os controles da sua empresa com segurança.'}
             </p>
 

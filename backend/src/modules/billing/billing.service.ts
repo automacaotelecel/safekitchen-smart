@@ -49,11 +49,11 @@ export async function createMercadoPagoCheckout(input: {
   const plan = getCommercialPlan(input.planCode);
   if (!plan) throw new Error('Plano inválido.');
 
-  const approvedKit = await prisma.kitOrder.findFirst({
+  const implementation = await prisma.implementationOrder.findFirst({
     where: { restaurantId: input.restaurantId, planCode: plan.code, status: 'APPROVED' },
   });
-  if (!approvedKit?.deliveredAt) {
-    throw new Error('Confirme primeiro o recebimento do kit para autorizar a mensalidade.');
+  if (!implementation?.completedAt) {
+    throw new Error('A implantação precisa ser concluída antes da autorização da mensalidade.');
   }
 
   const current = await prisma.subscription.findUnique({
@@ -151,9 +151,11 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     throw new Error('Assinatura sem referência válida para uma conta do SafeKitchen.');
   }
 
-  const [restaurant, approvedKit] = await Promise.all([
+  const [restaurant, implementation] = await Promise.all([
     prisma.restaurant.findUnique({ where: { id: restaurantId } }),
-    prisma.kitOrder.findFirst({ where: { restaurantId, planCode: plan.code, status: 'APPROVED' } }),
+    prisma.implementationOrder.findFirst({
+      where: { restaurantId, planCode: plan.code, status: 'APPROVED' },
+    }),
   ]);
   if (!restaurant) throw new Error('Conta vinculada à assinatura não encontrada.');
 
@@ -165,12 +167,12 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       restaurant.trialEndsAt >= now
   );
   const accountStatus =
-    status === 'ACTIVE' && approvedKit?.deliveredAt
+    status === 'ACTIVE' && implementation?.completedAt
       ? 'ACTIVE'
-      : status === 'ACTIVE' && approvedKit
-        ? 'AWAITING_DELIVERY'
+      : status === 'ACTIVE' && implementation
+        ? 'AWAITING_IMPLEMENTATION'
         : status === 'ACTIVE'
-        ? 'PENDING_KIT'
+        ? 'PENDING_IMPLEMENTATION'
         : status === 'PENDING' && trialStillActive
           ? 'TRIALING'
           : status;
@@ -213,8 +215,14 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
-        plan: status === 'ACTIVE' && approvedKit?.deliveredAt ? plan.code : restaurant.plan,
-        maxUsers: status === 'ACTIVE' && approvedKit?.deliveredAt ? plan.maxUsers : restaurant.maxUsers,
+        plan:
+          status === 'ACTIVE' && implementation?.completedAt
+            ? plan.code
+            : restaurant.plan,
+        maxUsers:
+          status === 'ACTIVE' && implementation?.completedAt
+            ? plan.maxUsers
+            : restaurant.maxUsers,
         subscriptionStatus: accountStatus,
         subscriptionEndsAt:
           status === 'ACTIVE'
@@ -232,9 +240,9 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       type: 'SUBSCRIPTION_ACTIVE',
       severity: 'INFO',
       title: 'Assinatura confirmada',
-      message: approvedKit?.deliveredAt
+      message: implementation?.completedAt
         ? `O plano ${plan.name} está ativo e os recursos foram liberados.`
-        : `A mensalidade do plano ${plan.name} foi autorizada. Confirme o recebimento do kit para liberar o sistema.`,
+        : `A mensalidade do plano ${plan.name} foi autorizada. A implantação precisa ser concluída para liberar o sistema.`,
       link: '/assinatura',
       dedupeKey: `billing:${providerSubscriptionId}:active`,
     });
@@ -313,7 +321,7 @@ export async function changeMercadoPagoPlan(input: {
   planCode: PlanCode;
 }) {
   void input;
-  throw new Error('A troca entre kits exige ajuste de equipamentos. Solicite o upgrade ao suporte comercial.');
+  throw new Error('A alteração de plano exige uma revisão da implantação. Solicite o upgrade ao suporte comercial.');
 }
 
 export async function cancelMercadoPagoSubscription(restaurantId: string) {

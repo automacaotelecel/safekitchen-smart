@@ -23,22 +23,22 @@ model Restaurant {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  users               User[]
-  employees           Employee[]
-  products            Product[]
-  labels              Label[]
-  documents           Document[]
-  temperaturePoints   TemperaturePoint[]
-  temperatureDevices  TemperatureDevice[]
-  temperatureReadings TemperatureReading[]
-  complianceRecords   ComplianceRecord[]
-  auditLogs           AuditLog[]
-  aiUsage             AiUsage[]
-  subscription        Subscription?
-  kitOrders           KitOrder[]
-  contracts           CommercialContract[]
-  paymentEvents       PaymentEvent[]
-  notifications       Notification[]
+  users                User[]
+  employees            Employee[]
+  products             Product[]
+  labels               Label[]
+  documents            Document[]
+  temperaturePoints    TemperaturePoint[]
+  temperatureDevices   TemperatureDevice[]
+  temperatureReadings  TemperatureReading[]
+  complianceRecords    ComplianceRecord[]
+  auditLogs            AuditLog[]
+  aiUsage              AiUsage[]
+  subscription         Subscription?
+  implementationOrders ImplementationOrder[]
+  contracts            CommercialContract[]
+  paymentEvents        PaymentEvent[]
+  notifications        Notification[]
 
   @@index([subscriptionStatus])
   @@index([active])
@@ -345,7 +345,7 @@ model Subscription {
   @@index([providerSubscriptionId])
 }
 
-model KitOrder {
+model ImplementationOrder {
   id                      String    @id @default(cuid())
   restaurantId            String
   planCode                String
@@ -360,16 +360,17 @@ model KitOrder {
   customerName            String
   customerDocument        String
   customerPhone           String?
-  deliveryAddress         Json
+  businessAddress         Json
   paidAt                  DateTime?
-  fulfillmentStatus       String    @default("AWAITING_PAYMENT")
-  shippedAt               DateTime?
-  trackingCode            String?
-  trackingUrl             String?
-  shippingEmailedAt       DateTime?
-  shippingEmailProviderId String?
-  shippingEmailError      String?
-  deliveredAt             DateTime?
+  implementationStatus    String    @default("AWAITING_PAYMENT")
+  scheduledAt             DateTime?
+  scheduledFor            DateTime?
+  meetingUrl              String?
+  scheduleNotes           String?
+  scheduleEmailedAt       DateTime?
+  scheduleEmailProviderId String?
+  scheduleEmailError      String?
+  completedAt             DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -378,13 +379,13 @@ model KitOrder {
 
   @@index([restaurantId, status, createdAt])
   @@index([providerPaymentId])
-  @@index([fulfillmentStatus, updatedAt])
+  @@index([implementationStatus, updatedAt])
 }
 
 model CommercialContract {
   id                     String    @id @default(cuid())
   restaurantId           String
-  kitOrderId             String    @unique
+  implementationOrderId  String    @unique
   acceptedById           String
   contractNumber         String    @unique
   version                String
@@ -412,9 +413,9 @@ model CommercialContract {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  kitOrder   KitOrder   @relation(fields: [kitOrderId], references: [id], onDelete: Cascade)
-  acceptedBy User       @relation(fields: [acceptedById], references: [id], onDelete: Restrict)
+  restaurant          Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  implementationOrder ImplementationOrder @relation(fields: [implementationOrderId], references: [id], onDelete: Cascade)
+  acceptedBy          User                @relation(fields: [acceptedById], references: [id], onDelete: Restrict)
 
   @@index([restaurantId, status, createdAt])
   @@index([customerEmail])

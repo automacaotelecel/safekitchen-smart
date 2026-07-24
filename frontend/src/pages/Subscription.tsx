@@ -1,40 +1,101 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, CreditCard, Download, FileCheck2, LogOut, PackageCheck, RefreshCcw, Send, Settings, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  FileCheck2,
+  LogOut,
+  RefreshCcw,
+  Send,
+  Settings,
+  Settings2,
+  XCircle,
+} from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { API_URL, api, clearToken, getToken } from '../api/client';
 import { PlanCards } from '../components/PlanCards';
-import type { CommercialContractInfo, CommercialPlan, KitOrderInfo, PlanCode, SubscriptionInfo } from '../types';
+import type {
+  CommercialContractInfo,
+  CommercialPlan,
+  ImplementationOrderInfo,
+  PlanCode,
+  SubscriptionInfo,
+} from '../types';
 
 type BillingState = {
   enabled: boolean;
   contractConfigured: boolean;
-  restaurant: { plan: string; subscriptionStatus: string; trialEndsAt?: string | null; subscriptionEndsAt?: string | null } | null;
+  restaurant: {
+    plan: string;
+    subscriptionStatus: string;
+    trialEndsAt?: string | null;
+    subscriptionEndsAt?: string | null;
+  } | null;
   subscription: SubscriptionInfo | null;
-  kitOrder: KitOrderInfo | null;
+  implementationOrder: ImplementationOrderInfo | null;
   contract: CommercialContractInfo | null;
 };
 
 type CheckoutForm = {
-  customerName: string; customerDocument: string; customerPhone: string;
-  postalCode: string; street: string; number: string; complement: string;
-  district: string; city: string; state: string; acceptedTerms: boolean;
+  customerName: string;
+  customerDocument: string;
+  customerPhone: string;
+  postalCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  district: string;
+  city: string;
+  state: string;
+  acceptedTerms: boolean;
+};
+
+type ContractProvider = {
+  name: string;
+  document: string;
+  email: string;
+  city: string;
+  implementationDays: number;
 };
 
 const emptyForm: CheckoutForm = {
-  customerName: '', customerDocument: '', customerPhone: '', postalCode: '', street: '', number: '',
-  complement: '', district: '', city: '', state: '', acceptedTerms: false,
+  customerName: '',
+  customerDocument: '',
+  customerPhone: '',
+  postalCode: '',
+  street: '',
+  number: '',
+  complement: '',
+  district: '',
+  city: '',
+  state: '',
+  acceptedTerms: false,
 };
-type ContractProvider = { name: string; document: string; email: string; city: string; deliveryDays: number };
+
+function formatDateTime(value?: string | null) {
+  if (!value) return 'Aguardando definição';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Aguardando definição';
+  return date.toLocaleString('pt-BR', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  });
+}
 
 export function Subscription() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [plans, setPlans] = useState<CommercialPlan[]>([]);
   const [termsVersion, setTermsVersion] = useState('');
-  const [contractProvider, setContractProvider] = useState<ContractProvider | null>(null);
+  const [contractProvider, setContractProvider] =
+    useState<ContractProvider | null>(null);
   const [billing, setBilling] = useState<BillingState | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<CommercialPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] =
+    useState<CommercialPlan | null>(null);
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
   const [busyPlan, setBusyPlan] = useState<PlanCode | null>(null);
   const [busyAction, setBusyAction] = useState('');
@@ -46,100 +107,156 @@ export function Subscription() {
     setMessage('');
     try {
       const paymentId = searchParams.get('payment_id');
-      if (paymentId && searchParams.get('kit') === 'approved') {
-        await api('/api/billing/kit-sync', { method: 'POST', body: JSON.stringify({ paymentId }) });
+      if (
+        paymentId &&
+        searchParams.get('implementation') === 'approved'
+      ) {
+        await api('/api/billing/implementation-sync', {
+          method: 'POST',
+          body: JSON.stringify({ paymentId }),
+        });
         window.history.replaceState({}, '', '/assinatura');
       }
-      if (syncSubscription) await api('/api/billing/sync', { method: 'POST' });
+      if (syncSubscription) {
+        await api('/api/billing/sync', { method: 'POST' });
+      }
+
       const [planData, state] = await Promise.all([
-        api<{ plans: CommercialPlan[]; contractTermsVersion: string; contractProvider: ContractProvider | null }>('/api/billing/plans'),
+        api<{
+          plans: CommercialPlan[];
+          contractTermsVersion: string;
+          contractProvider: ContractProvider | null;
+        }>('/api/billing/plans'),
         api<BillingState>('/api/billing/subscription'),
       ]);
+
       setPlans(Array.isArray(planData?.plans) ? planData.plans : []);
-      setTermsVersion(typeof planData?.contractTermsVersion === 'string' ? planData.contractTermsVersion : '');
+      setTermsVersion(
+        typeof planData?.contractTermsVersion === 'string'
+          ? planData.contractTermsVersion
+          : ''
+      );
       setContractProvider(planData?.contractProvider || null);
       setBilling(state || null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao carregar contratação.');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao carregar contratação.'
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void load(searchParams.get('checkout') === 'retorno'); }, []);
+  useEffect(() => {
+    void load(searchParams.get('checkout') === 'retorno');
+  }, []);
 
   async function selectPlan(plan: CommercialPlan) {
     setMessage('');
-    const kit = billing?.kitOrder;
-    if (kit?.status === 'APPROVED') {
-      if (!kit.deliveredAt) {
-        setMessage('Confirme o recebimento do kit antes de assinar a mensalidade.');
+    const implementation = billing?.implementationOrder;
+
+    if (implementation?.status === 'APPROVED') {
+      if (!implementation.completedAt) {
+        setMessage(
+          'A mensalidade será autorizada depois que a implantação for concluída.'
+        );
         return;
       }
-      if (kit.planCode !== plan.code) {
-        setMessage('O kit pago pertence a outro plano. Fale com o suporte para realizar um upgrade de equipamentos.');
+      if (implementation.planCode !== plan.code) {
+        setMessage(
+          'A implantação paga pertence a outro plano. Fale com o suporte para revisar a contratação.'
+        );
         return;
       }
+
       setBusyPlan(plan.code);
       try {
-        const data = await api<{ checkoutUrl: string }>('/api/billing/checkout', {
-          method: 'POST', body: JSON.stringify({ planCode: plan.code }),
-        });
+        const data = await api<{ checkoutUrl: string }>(
+          '/api/billing/checkout',
+          {
+            method: 'POST',
+            body: JSON.stringify({ planCode: plan.code }),
+          }
+        );
         window.location.assign(data.checkoutUrl);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Erro ao autorizar mensalidade.');
-      } finally { setBusyPlan(null); }
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'Erro ao autorizar mensalidade.'
+        );
+      } finally {
+        setBusyPlan(null);
+      }
       return;
     }
+
     setSelectedPlan(plan);
   }
 
-  async function createKitCheckout(event: FormEvent) {
+  async function createImplementationCheckout(event: FormEvent) {
     event.preventDefault();
     if (!selectedPlan) return;
+
     setBusyPlan(selectedPlan.code);
     setMessage('');
     try {
-      const data = await api<{ checkoutUrl: string }>('/api/billing/kit-checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          planCode: selectedPlan.code,
-          customerName: form.customerName,
-          customerDocument: form.customerDocument,
-          customerPhone: form.customerPhone || undefined,
-          acceptedTerms: form.acceptedTerms,
-          termsVersion,
-          deliveryAddress: {
-            postalCode: form.postalCode, street: form.street, number: form.number,
-            complement: form.complement || undefined, district: form.district,
-            city: form.city, state: form.state,
-          },
-        }),
-      });
+      const data = await api<{ checkoutUrl: string }>(
+        '/api/billing/implementation-checkout',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            planCode: selectedPlan.code,
+            customerName: form.customerName,
+            customerDocument: form.customerDocument,
+            customerPhone: form.customerPhone || undefined,
+            acceptedTerms: form.acceptedTerms,
+            termsVersion,
+            businessAddress: {
+              postalCode: form.postalCode,
+              street: form.street,
+              number: form.number,
+              complement: form.complement || undefined,
+              district: form.district,
+              city: form.city,
+              state: form.state,
+            },
+          }),
+        }
+      );
       window.location.assign(data.checkoutUrl);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao criar pagamento do kit.');
-    } finally { setBusyPlan(null); }
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao criar pagamento da implantação.'
+      );
+    } finally {
+      setBusyPlan(null);
+    }
   }
 
   async function cancel() {
-    if (!window.confirm('Cancelar a assinatura agora? O acesso pago será encerrado imediatamente.')) return;
+    if (
+      !window.confirm(
+        'Cancelar a assinatura agora? O acesso pago será encerrado imediatamente.'
+      )
+    ) {
+      return;
+    }
     setBusyAction('cancel');
-    try { await api('/api/billing/cancel', { method: 'POST' }); setMessage('Assinatura cancelada.'); await load(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Erro ao cancelar assinatura.'); }
-    finally { setBusyAction(''); }
-  }
-
-  async function confirmDelivery() {
-    if (!window.confirm('Confirma que o kit SafeKitchen foi recebido?')) return;
-    setBusyAction('delivery');
-    setMessage('');
     try {
-      await api('/api/billing/kit-confirm-delivery', { method: 'POST' });
+      await api('/api/billing/cancel', { method: 'POST' });
+      setMessage('Assinatura cancelada.');
       await load();
-      setMessage('Recebimento confirmado. Seu acesso operacional foi liberado.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao confirmar recebimento.');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao cancelar assinatura.'
+      );
     } finally {
       setBusyAction('');
     }
@@ -148,33 +265,72 @@ export function Subscription() {
   async function downloadContract() {
     setBusyAction('download');
     try {
-      const response = await fetch(`${API_URL}/api/billing/contract/pdf`, { headers: { Authorization: `Bearer ${getToken()}` } });
-      if (!response.ok) throw new Error('Não foi possível baixar o contrato.');
+      const response = await fetch(
+        `${API_URL}/api/billing/contract/pdf`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }
+      );
+      if (!response.ok) {
+        throw new Error('Não foi possível baixar o contrato.');
+      }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
-      anchor.href = url; anchor.download = `${billing?.contract?.contractNumber || 'contrato-safekitchen'}.pdf`; anchor.click();
+      anchor.href = url;
+      anchor.download = `${
+        billing?.contract?.contractNumber || 'contrato-safekitchen'
+      }.pdf`;
+      anchor.click();
       URL.revokeObjectURL(url);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Erro ao baixar contrato.'); }
-    finally { setBusyAction(''); }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao baixar contrato.'
+      );
+    } finally {
+      setBusyAction('');
+    }
   }
 
   async function resendContract() {
     setBusyAction('resend');
-    try { await api('/api/billing/contract/resend', { method: 'POST' }); setMessage('Contrato reenviado por e-mail.'); await load(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Erro ao reenviar contrato.'); }
-    finally { setBusyAction(''); }
+    try {
+      await api('/api/billing/contract/resend', { method: 'POST' });
+      setMessage('Contrato reenviado por e-mail.');
+      await load();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao reenviar contrato.'
+      );
+    } finally {
+      setBusyAction('');
+    }
   }
 
-  const kitPaid = billing?.kitOrder?.status === 'APPROVED';
-  const kitDelivered = Boolean(billing?.kitOrder?.deliveredAt);
-  const kitShipped = Boolean(billing?.kitOrder?.shippedAt);
-  const subscriptionActive = billing?.subscription?.status === 'ACTIVE';
-  const contractAvailable = ['KIT_PAID_PENDING_SUBSCRIPTION', 'ACTIVE'].includes(
-    billing?.contract?.status || ''
+  const implementationPaid =
+    billing?.implementationOrder?.status === 'APPROVED';
+  const implementationScheduled = Boolean(
+    billing?.implementationOrder?.scheduledFor
   );
-  const operationalAccess = billing?.restaurant?.subscriptionStatus === 'ACTIVE';
-  const visiblePlans = kitPaid ? plans.filter((plan) => plan.code === billing?.kitOrder?.planCode) : plans;
+  const implementationCompleted = Boolean(
+    billing?.implementationOrder?.completedAt
+  );
+  const subscriptionActive = billing?.subscription?.status === 'ACTIVE';
+  const contractAvailable = [
+    'IMPLEMENTATION_PAID_PENDING_ACTIVATION',
+    'ACTIVE',
+  ].includes(billing?.contract?.status || '');
+  const operationalAccess =
+    billing?.restaurant?.subscriptionStatus === 'ACTIVE';
+  const visiblePlans = implementationPaid
+    ? plans.filter(
+        (plan) => plan.code === billing?.implementationOrder?.planCode
+      )
+    : plans;
 
   function logout() {
     clearToken();
@@ -182,88 +338,500 @@ export function Subscription() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f8f8] text-safe-dark">
-      <header className="border-b border-slate-200 bg-white px-4 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen overflow-x-hidden bg-[#f4f8f8] text-safe-dark">
+      <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-5 sm:py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <img src="/safekitchen-logo.png" alt="SafeKitchen Smart" className="h-12 w-12 rounded-2xl object-contain" />
-            <div>
-              <p className="font-black text-safe-dark">SafeKitchen Smart</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-safe-green">
-                {operationalAccess ? 'Plano e cobrança' : 'Portal de contratação'}
+            <img
+              src="/safekitchen-logo.png"
+              alt="SafeKitchen Smart"
+              className="h-11 w-11 rounded-xl object-contain sm:h-12 sm:w-12"
+            />
+            <div className="min-w-0">
+              <p className="truncate font-black text-safe-dark">
+                SafeKitchen Smart
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-safe-green sm:text-xs">
+                {operationalAccess
+                  ? 'Plano e cobrança'
+                  : 'Portal de contratação'}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+
+          <div
+            className={`grid gap-2 ${
+              operationalAccess ? 'grid-cols-3' : 'grid-cols-1'
+            } sm:flex`}
+          >
             {operationalAccess && (
               <>
-                <Link to="/painel" className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black">
-                  <ArrowLeft size={15} /> Voltar ao sistema
+                <Link
+                  to="/painel"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[11px] font-black sm:px-3 sm:text-xs"
+                >
+                  <ArrowLeft size={15} /> Sistema
                 </Link>
-                <Link to="/conta" className="inline-flex items-center gap-2 rounded-xl bg-safe-dark px-3 py-2 text-xs font-black text-white">
+                <Link
+                  to="/conta"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-safe-dark px-2.5 py-2 text-[11px] font-black text-white sm:px-3 sm:text-xs"
+                >
                   <Settings size={15} /> Administração
                 </Link>
               </>
             )}
-            <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black text-red-600">
+            <button
+              type="button"
+              onClick={logout}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[11px] font-black text-red-600 sm:px-3 sm:text-xs"
+            >
               <LogOut size={15} /> Sair
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm md:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div><p className="text-xs font-black uppercase tracking-[0.26em] text-safe-green">Kit e mensalidade</p><h1 className="mt-2 text-3xl font-black text-safe-dark">Sua contratação</h1><p className="mt-2 text-sm font-medium text-slate-500">Pagamento seguro, assinatura recorrente e contrato eletrônico.</p></div>
-          <button onClick={() => load(subscriptionActive)} className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black"><RefreshCcw size={17} /> Atualizar pagamentos</button>
-        </div>
+      <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
+        <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-7">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-safe-green sm:text-xs">
+                Implantação e licença
+              </p>
+              <h1 className="mt-2 text-2xl font-black sm:text-3xl">
+                Sua contratação
+              </h1>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                Acompanhe pagamento, agendamento, contrato e mensalidade em um
+                só lugar.
+              </p>
+            </div>
+            <button
+              onClick={() => load(subscriptionActive)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black sm:w-auto"
+            >
+              <RefreshCcw size={17} /> Atualizar
+            </button>
+          </div>
 
-        {!billing?.contractConfigured && <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Configure os dados jurídicos do contrato no backend antes de vender kits.</div>}
-        {message && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">{message}</div>}
+          {!billing?.contractConfigured && (
+            <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">
+              Configure os dados jurídicos do contrato antes de oferecer a
+              implantação.
+            </div>
+          )}
 
-        {loading && <div className="mt-5 rounded-2xl bg-safe-soft p-4 text-sm font-bold text-safe-dark">Carregando dados da contratação...</div>}
+          {message && (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+              {message}
+            </div>
+          )}
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatusCard icon={kitPaid ? CheckCircle2 : PackageCheck} label="Kit" value={kitPaid ? 'PAGO' : billing?.kitOrder?.status || 'NÃO CONTRATADO'} />
-          <StatusCard icon={kitDelivered ? CheckCircle2 : PackageCheck} label="Entrega" value={kitDelivered ? 'RECEBIDO' : kitShipped ? 'ENVIADO' : kitPaid ? 'EM PREPARAÇÃO' : 'AGUARDANDO PAGAMENTO'} />
-          <StatusCard icon={subscriptionActive ? CheckCircle2 : CreditCard} label="Mensalidade" value={billing?.subscription?.status || 'NÃO AUTORIZADA'} />
-          <StatusCard icon={contractAvailable ? FileCheck2 : XCircle} label="Contrato" value={contractAvailable ? billing?.contract?.contractNumber || 'DISPONÍVEL' : 'AGUARDANDO PAGAMENTO'} />
-        </div>
+          {loading && (
+            <div className="mt-5 rounded-2xl bg-safe-soft p-4 text-sm font-bold">
+              Carregando dados da contratação...
+            </div>
+          )}
 
-        {billing?.kitOrder?.status === 'PENDING' && billing.kitOrder.checkoutUrl && <a href={billing.kitOrder.checkoutUrl} className="mt-5 inline-flex rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white">Continuar pagamento do kit</a>}
-        {contractAvailable && <div className="mt-5 flex flex-wrap gap-3"><button onClick={downloadContract} disabled={Boolean(busyAction)} className="inline-flex items-center gap-2 rounded-2xl bg-safe-dark px-4 py-3 text-sm font-black text-white"><Download size={17} /> Baixar contrato</button><button onClick={resendContract} disabled={Boolean(busyAction)} className="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black"><Send size={17} /> Reenviar contrato por e-mail</button></div>}
-        {subscriptionActive && <button onClick={cancel} disabled={busyAction === 'cancel'} className="mt-5 block text-sm font-black text-red-600 hover:underline">Cancelar assinatura</button>}
-      </section>
+          <div className="mt-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <StatusCard
+              icon={implementationPaid ? CheckCircle2 : Settings2}
+              label="Implantação"
+              value={
+                implementationPaid
+                  ? 'PAGA'
+                  : billing?.implementationOrder?.status || 'PENDENTE'
+              }
+            />
+            <StatusCard
+              icon={
+                implementationCompleted
+                  ? CheckCircle2
+                  : CalendarClock
+              }
+              label="Andamento"
+              value={
+                implementationCompleted
+                  ? 'CONCLUÍDA'
+                  : implementationScheduled
+                    ? 'AGENDADA'
+                    : implementationPaid
+                      ? 'A AGENDAR'
+                      : 'AGUARDANDO'
+              }
+            />
+            <StatusCard
+              icon={subscriptionActive ? CheckCircle2 : CreditCard}
+              label="Mensalidade"
+              value={
+                billing?.subscription?.status || 'NÃO AUTORIZADA'
+              }
+            />
+            <StatusCard
+              icon={contractAvailable ? FileCheck2 : XCircle}
+              label="Contrato"
+              value={
+                contractAvailable
+                  ? billing?.contract?.contractNumber || 'DISPONÍVEL'
+                  : 'AGUARDANDO'
+              }
+            />
+          </div>
 
-      {kitPaid && kitDelivered && !subscriptionActive && <div className="flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="shrink-0" /><div><p className="font-black">Kit recebido</p><p className="text-sm">Agora assine a mensalidade abaixo para concluir a contratação e liberar o sistema.</p></div></div>}
-      {kitPaid && kitShipped && !kitDelivered && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950"><div className="flex gap-3"><PackageCheck className="shrink-0" /><div><p className="font-black">Seu kit está a caminho</p><p className="mt-1 text-sm font-medium">Código de rastreamento: <strong>{billing?.kitOrder?.trackingCode || 'consulte seu e-mail'}</strong>.</p>{billing?.kitOrder?.trackingUrl && <a href={billing.kitOrder.trackingUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex font-black text-safe-dark underline">Acompanhar entrega</a>}</div></div><button type="button" onClick={confirmDelivery} disabled={busyAction === 'delivery'} className="mt-4 rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white disabled:opacity-60">{busyAction === 'delivery' ? 'Confirmando...' : 'Confirmar recebimento do kit'}</button></div>}
-      {kitPaid && !kitShipped && !kitDelivered && <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5 text-cyan-950"><div className="flex gap-3"><PackageCheck className="shrink-0" /><div><p className="font-black">Kit pago — aguardando recebimento</p><p className="mt-1 text-sm font-medium">Quando o kit chegar ao estabelecimento, confirme abaixo. A mensalidade somente será autorizada depois dessa etapa.</p></div></div><button type="button" onClick={confirmDelivery} disabled={busyAction === 'delivery'} className="mt-4 rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white disabled:opacity-60">{busyAction === 'delivery' ? 'Confirmando...' : 'Confirmar recebimento do kit'}</button></div>}
-      {searchParams.get('kit') === 'failure' && <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertTriangle /><p className="font-bold">O pagamento do kit não foi concluído. Você pode tentar novamente.</p></div>}
+          {billing?.implementationOrder?.status === 'PENDING' &&
+            billing.implementationOrder.checkoutUrl && (
+              <a
+                href={billing.implementationOrder.checkoutUrl}
+                className="mt-5 inline-flex w-full justify-center rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white sm:w-auto"
+              >
+                Continuar pagamento da implantação
+              </a>
+            )}
 
-      {!loading && !subscriptionActive && (!kitPaid || kitDelivered) && visiblePlans.length > 0 && <PlanCards plans={visiblePlans} busyPlan={busyPlan} onSelect={selectPlan} actionLabel={() => kitPaid ? 'Assinar mensalidade' : 'Contratar'} />}
+          {contractAvailable && (
+            <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
+              <button
+                onClick={downloadContract}
+                disabled={Boolean(busyAction)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-dark px-4 py-3 text-sm font-black text-white"
+              >
+                <Download size={17} /> Baixar contrato
+              </button>
+              <button
+                onClick={resendContract}
+                disabled={Boolean(busyAction)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black"
+              >
+                <Send size={17} /> Reenviar por e-mail
+              </button>
+            </div>
+          )}
 
-      {!loading && !subscriptionActive && (!kitPaid || kitDelivered) && visiblePlans.length === 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center font-bold text-amber-900">
-          Não foi possível encontrar um plano disponível para esta conta. Atualize os pagamentos ou fale com o suporte.
-        </div>
-      )}
+          {subscriptionActive && (
+            <button
+              onClick={cancel}
+              disabled={busyAction === 'cancel'}
+              className="mt-5 block text-sm font-black text-red-600 hover:underline"
+            >
+              Cancelar assinatura
+            </button>
+          )}
+        </section>
 
-      {selectedPlan && <ContractModal plan={selectedPlan} provider={contractProvider} form={form} setForm={setForm} termsVersion={termsVersion} busy={busyPlan !== null} onClose={() => setSelectedPlan(null)} onSubmit={createKitCheckout} />}
+        {implementationPaid &&
+          !implementationScheduled &&
+          !implementationCompleted && (
+            <InfoPanel
+              icon={CalendarClock}
+              title="Pagamento confirmado"
+              text="O contrato foi gerado. Nossa equipe entrará em contato para agendar a implantação remota."
+            />
+          )}
+
+        {implementationScheduled && !implementationCompleted && (
+          <InfoPanel
+            icon={CalendarClock}
+            title="Implantação agendada"
+            text={`Atendimento previsto para ${formatDateTime(
+              billing?.implementationOrder?.scheduledFor
+            )}.`}
+            action={
+              billing?.implementationOrder?.meetingUrl ? (
+                <a
+                  href={billing.implementationOrder.meetingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-flex w-full justify-center rounded-xl bg-safe-dark px-4 py-3 text-sm font-black text-white sm:w-auto"
+                >
+                  Acessar atendimento
+                </a>
+              ) : null
+            }
+          />
+        )}
+
+        {implementationCompleted && !subscriptionActive && (
+          <InfoPanel
+            icon={CheckCircle2}
+            title="Implantação concluída"
+            text="Autorize a mensalidade abaixo para ativar o plano e liberar o acesso completo."
+            positive
+          />
+        )}
+
+        {searchParams.get('implementation') === 'failure' && (
+          <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+            <AlertTriangle className="shrink-0" />
+            <p className="font-bold">
+              O pagamento da implantação não foi concluído. Você pode tentar
+              novamente.
+            </p>
+          </div>
+        )}
+
+        {!loading &&
+          !subscriptionActive &&
+          (!implementationPaid || implementationCompleted) &&
+          visiblePlans.length > 0 && (
+            <PlanCards
+              plans={visiblePlans}
+              busyPlan={busyPlan}
+              onSelect={selectPlan}
+              actionLabel={() =>
+                implementationPaid
+                  ? 'Autorizar mensalidade'
+                  : 'Contratar'
+              }
+            />
+          )}
+
+        {!loading &&
+          !subscriptionActive &&
+          (!implementationPaid || implementationCompleted) &&
+          visiblePlans.length === 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center font-bold text-amber-900">
+              Nenhum plano disponível para esta conta. Atualize os pagamentos
+              ou fale com o suporte.
+            </div>
+          )}
+
+        {selectedPlan && (
+          <ContractModal
+            plan={selectedPlan}
+            provider={contractProvider}
+            form={form}
+            setForm={setForm}
+            termsVersion={termsVersion}
+            busy={busyPlan !== null}
+            onClose={() => setSelectedPlan(null)}
+            onSubmit={createImplementationCheckout}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-function ContractModal({ plan, provider, form, setForm, termsVersion, busy, onClose, onSubmit }: { plan: CommercialPlan; provider: ContractProvider | null; form: CheckoutForm; setForm: (form: CheckoutForm) => void; termsVersion: string; busy: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
-  const field = (key: keyof CheckoutForm, value: string | boolean) => setForm({ ...form, [key]: value });
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-4"><form onSubmit={onSubmit} className="mx-auto my-6 max-w-3xl rounded-[28px] bg-white p-5 shadow-2xl md:p-7"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-safe-green">Aceite eletrônico · versão {termsVersion}</p><h2 className="mt-2 text-2xl font-black">Contratar {plan.name}</h2></div><button type="button" onClick={onClose} className="rounded-xl border px-3 py-2 font-black">Fechar</button></div>
-    <div className="mt-5 grid gap-4 sm:grid-cols-2"><Input label="Nome/Razão social" value={form.customerName} onChange={(v) => field('customerName', v)} /><Input label="CPF/CNPJ" value={form.customerDocument} onChange={(v) => field('customerDocument', v)} /><Input label="Telefone" value={form.customerPhone} onChange={(v) => field('customerPhone', v)} /><Input label="CEP" value={form.postalCode} onChange={(v) => field('postalCode', v)} /><Input label="Logradouro" value={form.street} onChange={(v) => field('street', v)} /><Input label="Número" value={form.number} onChange={(v) => field('number', v)} /><Input label="Complemento" value={form.complement} onChange={(v) => field('complement', v)} required={false} /><Input label="Bairro" value={form.district} onChange={(v) => field('district', v)} /><Input label="Cidade" value={form.city} onChange={(v) => field('city', v)} /><Input label="UF" value={form.state} onChange={(v) => field('state', v.toUpperCase().slice(0, 2))} /></div>
-    <div className="mt-5 max-h-64 overflow-y-auto rounded-2xl border bg-slate-50 p-4 text-sm leading-6 text-slate-600"><p className="font-black text-safe-dark">Termos da contratação</p><p className="mt-2"><strong>Contratada:</strong> {provider ? `${provider.name}, documento ${provider.document}, contato ${provider.email}` : 'dados jurídicos pendentes de configuração'}.</p><p className="mt-2"><strong>Objeto:</strong> fornecimento do kit {plan.name}, implantação e licença mensal, pessoal e não transferível do SafeKitchen Smart. O software é assistivo e não substitui a responsabilidade técnica ou sanitária do estabelecimento.</p><p className="mt-2"><strong>Valores:</strong> pagamento inicial de <strong>{(plan.setupAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong> e mensalidade recorrente de <strong>{(plan.amountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>.</p><p className="mt-2"><strong>Kit:</strong> {plan.kitItems.join('; ')}.</p><p className="mt-2"><strong>Ativação e entrega:</strong> o acesso operacional será liberado após a confirmação do pagamento do kit, autorização da mensalidade e confirmação de recebimento pelo contratante. Prazo estimado de despacho: até {provider?.deliveryDays || 15} dias úteis, ressalvadas indisponibilidades comunicadas.</p><p className="mt-2"><strong>Vigência e cancelamento:</strong> licença por prazo indeterminado, renovada mensalmente. O cancelamento interrompe cobranças futuras e preserva obrigações vencidas e direitos legais de devolução ou arrependimento quando aplicáveis.</p><p className="mt-2"><strong>Equipamentos:</strong> uso conforme manuais; garantias legais e do fabricante são preservadas. Mau uso e danos externos não ficam cobertos além do exigido por lei.</p><p className="mt-2"><strong>Dados e segurança:</strong> os dados serão tratados para executar o contrato, suporte, pagamentos e alertas. O contratante controla os acessos de sua equipe e declara possuir base legal para os dados inseridos.</p><p className="mt-2"><strong>Aceite eletrônico:</strong> serão registrados versão, data, usuário, IP, navegador e hash SHA-256. Após a confirmação do pagamento do kit, o contrato em PDF será enviado ao e-mail do administrador.</p></div>
-    <label className="mt-5 flex items-start gap-3 rounded-2xl border p-4 text-sm font-bold"><input type="checkbox" checked={form.acceptedTerms} onChange={(e) => field('acceptedTerms', e.target.checked)} required className="mt-1" /><span>Li e aceito o contrato de fornecimento do kit e licença mensal do SafeKitchen Smart, autorizando o registro eletrônico deste aceite.</span></label>
-    <button disabled={busy || !form.acceptedTerms} className="mt-5 w-full rounded-2xl bg-safe-green px-5 py-4 font-black text-white disabled:opacity-50">{busy ? 'Preparando contratação...' : 'Contratar'}</button>
-  </form></div>;
+function ContractModal({
+  plan,
+  provider,
+  form,
+  setForm,
+  termsVersion,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  plan: CommercialPlan;
+  provider: ContractProvider | null;
+  form: CheckoutForm;
+  setForm: (form: CheckoutForm) => void;
+  termsVersion: string;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  const field = (
+    key: keyof CheckoutForm,
+    value: string | boolean
+  ) => setForm({ ...form, [key]: value });
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 px-2 py-2 sm:p-4">
+      <form
+        onSubmit={onSubmit}
+        className="mx-auto min-h-[calc(100dvh-1rem)] max-w-3xl rounded-[22px] bg-white p-4 shadow-2xl sm:my-5 sm:min-h-0 sm:rounded-[28px] sm:p-7"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-safe-green sm:text-xs">
+              Aceite eletrônico · versão {termsVersion}
+            </p>
+            <h2 className="mt-2 text-xl font-black sm:text-2xl">
+              Contratar {plan.name}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-xl border px-3 py-2 text-sm font-black"
+          >
+            Fechar
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Input label="Nome/Razão social" value={form.customerName} onChange={(value) => field('customerName', value)} />
+          <Input label="CPF/CNPJ" value={form.customerDocument} onChange={(value) => field('customerDocument', value)} />
+          <Input label="Telefone" value={form.customerPhone} onChange={(value) => field('customerPhone', value)} />
+          <Input label="CEP" value={form.postalCode} onChange={(value) => field('postalCode', value)} />
+          <Input label="Logradouro" value={form.street} onChange={(value) => field('street', value)} />
+          <Input label="Número" value={form.number} onChange={(value) => field('number', value)} />
+          <Input label="Complemento" value={form.complement} onChange={(value) => field('complement', value)} required={false} />
+          <Input label="Bairro" value={form.district} onChange={(value) => field('district', value)} />
+          <Input label="Cidade" value={form.city} onChange={(value) => field('city', value)} />
+          <Input label="UF" value={form.state} onChange={(value) => field('state', value.toUpperCase().slice(0, 2))} />
+        </div>
+
+        <div className="mt-5 max-h-64 overflow-y-auto rounded-2xl border bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+          <p className="font-black text-safe-dark">Termos da contratação</p>
+          <p className="mt-2">
+            <strong>Contratada:</strong>{' '}
+            {provider
+              ? `${provider.name}, documento ${provider.document}, contato ${provider.email}`
+              : 'dados jurídicos pendentes de configuração'}
+            .
+          </p>
+          <p className="mt-2">
+            <strong>Objeto:</strong> implantação assistida do plano{' '}
+            {plan.name} e licença mensal do SafeKitchen Smart.
+          </p>
+          <p className="mt-2">
+            <strong>Valores:</strong> taxa única de implantação de{' '}
+            <strong>
+              {(plan.setupAmountCents / 100).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
+            </strong>{' '}
+            e mensalidade de{' '}
+            <strong>
+              {(plan.amountCents / 100).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
+            </strong>
+            .
+          </p>
+          <p className="mt-2">
+            <strong>Implantação:</strong>{' '}
+            {plan.implementationItems.join('; ')}.
+          </p>
+          <p className="mt-2">
+            <strong>Prazo:</strong> atendimento remoto iniciado ou agendado em
+            até {provider?.implementationDays || 15} dias úteis após o
+            pagamento e o fornecimento das informações necessárias.
+          </p>
+          <p className="mt-2">
+            <strong>Ativação:</strong> o acesso completo será liberado depois
+            da conclusão da implantação e da autorização da mensalidade.
+          </p>
+          <p className="mt-2">
+            <strong>Equipamentos:</strong> impressoras, etiquetas, termômetros e
+            dispositivos não estão incluídos. Integrações dependem de
+            compatibilidade técnica.
+          </p>
+          <p className="mt-2">
+            <strong>Aceite eletrônico:</strong> versão, data, usuário, IP,
+            navegador e hash SHA-256 serão registrados. O PDF será enviado
+            após a confirmação do pagamento.
+          </p>
+        </div>
+
+        <label className="mt-5 flex items-start gap-3 rounded-2xl border p-4 text-sm font-bold">
+          <input
+            type="checkbox"
+            checked={form.acceptedTerms}
+            onChange={(event) =>
+              field('acceptedTerms', event.target.checked)
+            }
+            required
+            className="mt-1"
+          />
+          <span>
+            Li e aceito o contrato de implantação e licença mensal do
+            SafeKitchen Smart, autorizando o registro eletrônico deste aceite.
+          </span>
+        </label>
+
+        <button
+          disabled={busy || !form.acceptedTerms}
+          className="mt-5 w-full rounded-2xl bg-safe-green px-5 py-4 font-black text-white disabled:opacity-50"
+        >
+          {busy ? 'Preparando contratação...' : 'Pagar implantação'}
+        </button>
+      </form>
+    </div>
+  );
 }
 
-function Input({ label, value, onChange, required = true }: { label: string; value: string; onChange: (value: string) => void; required?: boolean }) { return <label className="text-sm font-black text-safe-dark">{label}<input value={value} onChange={(e) => onChange(e.target.value)} required={required} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-medium outline-none focus:border-safe-green" /></label>; }
-function StatusCard({ icon: Icon, label, value }: { icon: typeof CreditCard; label: string; value: string }) { return <div className="rounded-2xl bg-safe-soft p-4"><Icon size={20} className="text-safe-green" /><p className="mt-3 break-words text-lg font-black">{value}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p></div>; }
+function Input({
+  label,
+  value,
+  onChange,
+  required = true,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <label className="text-sm font-black text-safe-dark">
+      {label}
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-medium outline-none focus:border-safe-green"
+      />
+    </label>
+  );
+}
+
+function StatusCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof CreditCard;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-safe-soft p-3 sm:p-4">
+      <Icon size={19} className="text-safe-green" />
+      <p className="mt-2 break-words text-sm font-black leading-5 sm:mt-3 sm:text-lg">
+        {value}
+      </p>
+      <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 sm:text-xs">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function InfoPanel({
+  icon: Icon,
+  title,
+  text,
+  action,
+  positive = false,
+}: {
+  icon: typeof CalendarClock;
+  title: string;
+  text: string;
+  action?: React.ReactNode;
+  positive?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 sm:p-5 ${
+        positive
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+          : 'border-cyan-200 bg-cyan-50 text-cyan-950'
+      }`}
+    >
+      <div className="flex gap-3">
+        <Icon className="shrink-0" />
+        <div>
+          <p className="font-black">{title}</p>
+          <p className="mt-1 text-sm font-medium leading-6">{text}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export default Subscription;
