@@ -140,10 +140,10 @@ export async function renderContractPdf(contract: CommercialContract) {
   paragraph(`Serviços de implantação: ${snapshot.plan.implementationItems.join('; ')}. Recursos digitais principais: ${snapshot.plan.features.join('; ')}.`);
 
   heading('3. PREÇO E PAGAMENTO');
-  paragraph(`O CONTRATANTE pagará ${money(snapshot.plan.setupAmountCents)} pela implantação, em cobrança única, e ${money(snapshot.plan.monthlyAmountCents)} por mês pela licença e pelos serviços digitais. A mensalidade será cobrada pelo Mercado Pago somente após sua autorização. Internet, insumos, equipamentos, deslocamentos presenciais e integrações não descritas neste contrato não estão incluídos.`);
+  paragraph(`No ato da contratação, o CONTRATANTE pagará ${money(snapshot.plan.setupAmountCents)} pela implantação. Ao concluir o checkout de assinatura do Mercado Pago, o CONTRATANTE também autoriza expressamente as cobranças recorrentes futuras de ${money(snapshot.plan.monthlyAmountCents)} por mês pela licença e pelos serviços digitais. A primeira cobrança corresponde à implantação; as cobranças mensais seguintes serão processadas automaticamente pelo meio de pagamento autorizado, até o cancelamento. Internet, insumos, equipamentos, deslocamentos presenciais e integrações não descritas neste contrato não estão incluídos.`);
 
   heading('4. IMPLANTAÇÃO E ATIVAÇÃO');
-  paragraph(`Após a confirmação do pagamento da taxa, a CONTRATADA entrará em contato para iniciar ou agendar a implantação remota em até ${snapshot.implementationDays} dias úteis, contados do fornecimento, pelo CONTRATANTE, das informações e dos acessos necessários. A implantação será considerada concluída após a configuração prevista no plano e o treinamento inicial. O acesso operacional completo será liberado após a conclusão da implantação e a autorização da mensalidade.`);
+  paragraph(`Após a confirmação, pelo Mercado Pago, do pagamento inicial e da autorização da assinatura, o acesso operacional ao SafeKitchen Smart será liberado imediatamente. A implantação assistida não condiciona o início do uso do sistema. A CONTRATADA entrará em contato para iniciar ou agendar a implantação remota em até ${snapshot.implementationDays} dias úteis, contados do fornecimento, pelo CONTRATANTE, das informações e dos acessos necessários.`);
 
   heading('5. VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO');
   paragraph('A licença mensal vigorará por prazo indeterminado, com renovação automática a cada mês. O CONTRATANTE poderá solicitar o cancelamento pelos canais disponibilizados. O cancelamento interrompe cobranças futuras, sem apagar obrigações vencidas. Reembolsos da implantação observarão a legislação aplicável, o direito de arrependimento quando cabível e a proporção dos serviços comprovadamente executados, nos limites permitidos por lei.');
@@ -205,18 +205,19 @@ export async function emailContract(contractId: string, forceResend = false) {
               <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
               <p style="font-size:16px;line-height:1.65;color:#425b60">
                 Confirmamos o pagamento da implantação do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>.
-                É um prazer receber você no SafeKitchen Smart.
+                A licença mensal também foi autorizada e seu acesso ao SafeKitchen Smart já está liberado.
               </p>
               <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
                 <p style="margin:0 0 8px"><strong>Contrato:</strong> ${htmlEscape(contract.contractNumber)}</p>
                 <p style="margin:0 0 8px"><strong>Taxa de implantação:</strong> ${money(snapshot.plan.setupAmountCents)}</p>
-                <p style="margin:0"><strong>Mensalidade após a ativação:</strong> ${money(snapshot.plan.monthlyAmountCents)}</p>
+                <p style="margin:0"><strong>Licença mensal:</strong> ${money(snapshot.plan.monthlyAmountCents)}</p>
               </div>
               <h2 style="font-size:18px;margin:24px 0 10px">Próximas etapas</h2>
               <ol style="padding-left:22px;line-height:1.7;color:#425b60">
+                <li>Seu acesso ao sistema já está liberado. Entre com o mesmo e-mail e a mesma senha usados no cadastro.</li>
+                <li>As próximas mensalidades de ${money(snapshot.plan.monthlyAmountCents)} serão cobradas automaticamente pelo Mercado Pago.</li>
                 <li>Nossa equipe entrará em contato para agendar a implantação remota em até ${snapshot.implementationDays} dias úteis.</li>
-                <li>Você receberá a confirmação do agendamento e as orientações por e-mail.</li>
-                <li>Depois da implantação, autorize a mensalidade para liberar o acesso operacional completo.</li>
+                <li>Você pode começar os cadastros agora e receberá as orientações de implantação por e-mail.</li>
               </ol>
               <p style="font-size:15px;line-height:1.65;color:#425b60">
                 O contrato com o registro do aceite eletrônico está anexado em PDF. Guarde-o junto com o comprovante de pagamento.
@@ -268,8 +269,8 @@ export async function emailWelcome(contractId: string, forceResend = false) {
             <div style="padding:28px">
               <p style="font-size:16px;line-height:1.65">Olá, <strong>${htmlEscape(contract.customerName)}</strong>.</p>
               <p style="font-size:16px;line-height:1.65;color:#425b60">
-                A implantação e a assinatura do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>
-                foram confirmadas. Seu acesso operacional está liberado.
+                A contratação da implantação e a assinatura do plano <strong>${htmlEscape(snapshot.plan.name)}</strong>
+                foram confirmadas. Seu acesso operacional está liberado e a implantação seguirá conforme o agendamento.
               </p>
               <div style="margin:22px 0;padding:18px;border-radius:16px;background:#f3faf8">
                 <p style="margin:0 0 8px"><strong>Plano vigente:</strong> ${htmlEscape(snapshot.plan.name)}</p>
@@ -324,7 +325,6 @@ export async function activateContractIfEligible(restaurantId: string) {
   ]);
   if (
     !implementationOrder?.contract ||
-    !implementationOrder.completedAt ||
     subscription?.status !== 'ACTIVE'
   ) {
     return null;

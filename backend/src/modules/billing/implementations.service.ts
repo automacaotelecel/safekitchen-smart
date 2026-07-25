@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import { MercadoPagoConfig, Payment, PreApproval } from 'mercadopago';
 
 import { env } from '../../config/env';
 import { sendEmail } from '../../lib/email';
@@ -83,12 +83,23 @@ export async function createImplementationCheckout(input: ImplementationCheckout
   const plan = getCommercialPlan(input.planCode);
   if (!plan) throw new Error('Plano inválido.');
 
-  const paid = await prisma.implementationOrder.findFirst({
-    where: { restaurantId: input.restaurantId, status: 'APPROVED' },
-    orderBy: { paidAt: 'desc' },
-  });
+  const [paid, currentSubscription] = await Promise.all([
+    prisma.implementationOrder.findFirst({
+      where: { restaurantId: input.restaurantId, status: 'APPROVED' },
+      orderBy: { paidAt: 'desc' },
+    }),
+    prisma.subscription.findUnique({
+      where: { restaurantId: input.restaurantId },
+    }),
+  ]);
   if (paid) {
     throw new Error('Esta conta já possui uma taxa de implantação paga.');
+  }
+  if (
+    currentSubscription?.status === 'ACTIVE' &&
+    currentSubscription.providerSubscriptionId
+  ) {
+    throw new Error('Esta conta já possui uma assinatura ativa.');
   }
 
   const pending = await prisma.implementationOrder.findFirst({
@@ -102,7 +113,9 @@ export async function createImplementationCheckout(input: ImplementationCheckout
   });
   if (
     pending?.checkoutUrl &&
-    pending.contract?.version === env.contractTermsVersion
+    pending.contract?.version === env.contractTermsVersion &&
+    currentSubscription?.providerSubscriptionId ===
+      pending.providerPreferenceId
   ) {
     return pending;
   }
@@ -159,45 +172,66 @@ export async function createImplementationCheckout(input: ImplementationCheckout
 
   try {
     const baseUrl = env.frontendUrl.split(',')[0].replace(/\/$/, '');
-    const response = await new Preference(client()).create({
+    const response = await new PreApproval(client()).create({
       body: {
-        items: [
-          {
-            id: `sks-implementation-${plan.code.toLowerCase()}`,
-            title: `SafeKitchen Smart - Implantação ${plan.name}`,
-            description: plan.implementationItems.join('; ').slice(0, 250),
-            quantity: 1,
-            unit_price: plan.setupAmountCents / 100,
-            currency_id: 'BRL',
-          },
-        ],
-        payer: {
-          email: input.payerEmail,
-          name: input.customerName,
+        reason: `SafeKitchen Smart - Implantação e licença ${plan.name}`,
+        external_reference: `${input.restaurantId}:${plan.code}`,
+        payer_email: input.payerEmail,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: plan.setupAmountCents / 100,
+          currency_id: 'BRL',
         },
-        external_reference: `implementation:${order.id}`,
-        back_urls: {
-          success: `${baseUrl}/assinatura?implementation=approved`,
-          pending: `${baseUrl}/assinatura?implementation=pending`,
-          failure: `${baseUrl}/assinatura?implementation=failure`,
-        },
-        auto_return: 'approved',
+        back_url: `${baseUrl}/assinatura?checkout=retorno`,
+        status: 'pending',
         notification_url: `${env.backendUrl}/api/billing/webhooks/mercado-pago`,
-        statement_descriptor: 'SAFEKITCHEN',
-      },
+      } as never,
     });
 
     if (!response.id || !response.init_point) {
-      throw new Error('O Mercado Pago não devolveu o checkout da implantação.');
+      throw new Error('O Mercado Pago não devolveu o link da contratação.');
     }
 
-    return prisma.implementationOrder.update({
-      where: { id: order.id },
-      data: {
-        providerPreferenceId: response.id,
-        checkoutUrl: response.init_point,
-      },
-      include: { contract: true },
+    return prisma.$transaction(async (tx) => {
+      await tx.subscription.upsert({
+        where: { restaurantId: input.restaurantId },
+        create: {
+          restaurantId: input.restaurantId,
+          planCode: plan.code,
+          status: 'PENDING',
+          providerSubscriptionId: response.id,
+          payerEmail: input.payerEmail,
+          checkoutUrl: response.init_point,
+          amountCents: plan.amountCents,
+          currency: plan.currency,
+          currentPeriodEnd: response.next_payment_date
+            ? new Date(response.next_payment_date)
+            : null,
+        },
+        update: {
+          planCode: plan.code,
+          status: 'PENDING',
+          providerSubscriptionId: response.id,
+          payerEmail: input.payerEmail,
+          checkoutUrl: response.init_point,
+          amountCents: plan.amountCents,
+          currency: plan.currency,
+          currentPeriodEnd: response.next_payment_date
+            ? new Date(response.next_payment_date)
+            : null,
+          canceledAt: null,
+        },
+      });
+
+      return tx.implementationOrder.update({
+        where: { id: order.id },
+        data: {
+          providerPreferenceId: response.id,
+          checkoutUrl: response.init_point,
+        },
+        include: { contract: true },
+      });
     });
   } catch (error) {
     await prisma.implementationOrder.update({
@@ -206,6 +240,71 @@ export async function createImplementationCheckout(input: ImplementationCheckout
     });
     throw error;
   }
+}
+
+export async function confirmImplementationFromSubscription(input: {
+  restaurantId: string;
+  planCode: PlanCode;
+  providerSubscriptionId: string;
+  providerPaymentId?: string | null;
+}) {
+  const order = await prisma.implementationOrder.findFirst({
+    where: {
+      restaurantId: input.restaurantId,
+      planCode: input.planCode,
+      OR: [
+        { providerPreferenceId: input.providerSubscriptionId },
+        { status: 'APPROVED' },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    include: { contract: true },
+  });
+  if (!order) {
+    throw new Error('Contrato de implantação não encontrado para esta assinatura.');
+  }
+
+  const newlyApproved = order.status !== 'APPROVED';
+  const approvedAt = order.paidAt || new Date();
+  const updated = await prisma.$transaction(async (tx) => {
+    const saved = await tx.implementationOrder.update({
+      where: { id: order.id },
+      data: {
+        status: 'APPROVED',
+        providerPaymentId:
+          input.providerPaymentId || order.providerPaymentId,
+        paidAt: approvedAt,
+        implementationStatus:
+          order.implementationStatus === 'AWAITING_PAYMENT'
+            ? 'AWAITING_SCHEDULING'
+            : order.implementationStatus,
+      },
+      include: { contract: true },
+    });
+
+    if (saved.contract && saved.contract.status !== 'ACTIVE') {
+      await tx.commercialContract.update({
+        where: { id: saved.contract.id },
+        data: { status: 'IMPLEMENTATION_PAID_PENDING_ACTIVATION' },
+      });
+    }
+    return saved;
+  });
+
+  if (newlyApproved) {
+    await createSystemNotification({
+      restaurantId: order.restaurantId,
+      type: 'IMPLEMENTATION_PAYMENT_APPROVED',
+      severity: 'INFO',
+      title: 'Contratação confirmada',
+      message:
+        'A taxa de implantação foi confirmada, a mensalidade ficou autorizada e o acesso ao sistema foi liberado.',
+      link: '/painel',
+      dedupeKey: `implementation:${order.id}:subscription-approved`,
+    });
+  }
+
+  return updated;
 }
 
 export async function syncImplementationPayment(providerPaymentId: string) {
@@ -221,15 +320,18 @@ export async function syncImplementationPayment(providerPaymentId: string) {
     include: { contract: true },
   });
   if (!order) throw new Error('Contratação de implantação não encontrada.');
+  const plan = getCommercialPlan(order.planCode);
+  if (!plan) throw new Error('Plano de implantação não encontrado.');
 
   const status = paymentStatus(response.status);
+  const approvedAt = order.paidAt || new Date();
   const updated = await prisma.$transaction(async (tx) => {
     const saved = await tx.implementationOrder.update({
       where: { id: order.id },
       data: {
         status,
         providerPaymentId: String(response.id || providerPaymentId),
-        paidAt: status === 'APPROVED' ? order.paidAt || new Date() : order.paidAt,
+        paidAt: status === 'APPROVED' ? approvedAt : order.paidAt,
         implementationStatus:
           status === 'APPROVED'
             ? 'AWAITING_SCHEDULING'
@@ -245,7 +347,12 @@ export async function syncImplementationPayment(providerPaymentId: string) {
       });
       await tx.restaurant.update({
         where: { id: order.restaurantId },
-        data: { subscriptionStatus: 'PENDING_IMPLEMENTATION' },
+        data: {
+          plan: plan.code,
+          maxUsers: plan.maxUsers,
+          subscriptionStatus: 'ACTIVE',
+          subscriptionEndsAt: null,
+        },
       });
     }
     return saved;
@@ -268,9 +375,9 @@ export async function syncImplementationPayment(providerPaymentId: string) {
       severity: 'INFO',
       title: 'Taxa de implantação confirmada',
       message: contractSent
-        ? 'Pagamento confirmado e contrato enviado por e-mail. Nossa equipe fará o agendamento da implantação.'
-        : 'Pagamento confirmado. O envio do contrato está pendente e nossa equipe fará o agendamento da implantação.',
-      link: '/assinatura',
+        ? 'Pagamento confirmado, acesso liberado e contrato enviado por e-mail.'
+        : 'Pagamento confirmado e acesso liberado. O envio do contrato está pendente.',
+      link: '/painel',
       dedupeKey: `implementation:${order.id}:approved`,
     });
   }
@@ -454,8 +561,8 @@ export async function completeImplementation(orderId: string) {
     severity: 'INFO',
     title: 'Implantação concluída',
     message: contract
-      ? 'Implantação concluída e acesso operacional liberado.'
-      : 'Implantação concluída. Agora autorize a mensalidade para liberar o acesso completo.',
+      ? 'Implantação concluída. Seu acesso e sua licença mensal estão ativos.'
+      : 'Implantação concluída. A equipe foi avisada para revisar o estado da sua contratação.',
     link: '/assinatura',
     dedupeKey: `implementation:${order.id}:completed`,
   });

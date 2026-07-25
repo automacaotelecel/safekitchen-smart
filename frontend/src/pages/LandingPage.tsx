@@ -55,18 +55,18 @@ const steps = [
   },
   {
     number: '02',
-    title: 'Contrate a implantação',
-    text: 'Aceite o contrato e pague a taxa única com segurança pelo Mercado Pago.',
+    title: 'Contrate em um único fluxo',
+    text: 'Pague a implantação e autorize as mensalidades futuras com segurança pelo Mercado Pago.',
   },
   {
     number: '03',
-    title: 'Configure com nossa equipe',
-    text: 'Agendamos o atendimento remoto, configuramos os módulos e treinamos sua equipe.',
+    title: 'Acesse imediatamente',
+    text: 'Após a confirmação do Mercado Pago, o sistema é liberado sem esperar o agendamento da implantação.',
   },
   {
     number: '04',
-    title: 'Ative sua licença',
-    text: 'Depois da implantação, autorize a mensalidade e comece a operar com o sistema completo.',
+    title: 'Configure com nossa equipe',
+    text: 'Agendamos o atendimento remoto, configuramos os módulos e treinamos sua equipe.',
   },
 ];
 
@@ -98,7 +98,7 @@ const faqs = [
   {
     question: 'Quando a mensalidade começa?',
     answer:
-      'A mensalidade é autorizada depois da conclusão da implantação. Assim, você não inicia a licença antes de a configuração prevista no plano estar pronta.',
+      'No mesmo checkout, você paga a implantação e autoriza as mensalidades futuras. O acesso é liberado assim que o Mercado Pago confirma a contratação; a implantação assistida acontece depois e não bloqueia o uso.',
   },
   {
     question: 'Como acontece a implantação?',

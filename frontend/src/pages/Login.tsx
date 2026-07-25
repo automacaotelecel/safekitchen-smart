@@ -157,11 +157,11 @@ export function Login() {
             onSubmit={submit}
             className="relative flex min-h-screen flex-col justify-center bg-[#071922] px-5 py-8 text-white sm:min-h-0 sm:p-10 lg:p-14"
           >
-            <div className="mb-8 lg:hidden">
+            <div className="mb-5 lg:hidden">
               <img
                 src="/safekitchen-logo.png"
                 alt="SafeKitchen Smart"
-                className="h-20 w-20 rounded-3xl bg-white object-contain p-1"
+                className="h-14 w-14 rounded-2xl bg-white object-contain p-1 shadow-sm"
               />
             </div>
 

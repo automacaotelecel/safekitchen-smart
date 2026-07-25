@@ -158,12 +158,6 @@ export function Subscription() {
     const implementation = billing?.implementationOrder;
 
     if (implementation?.status === 'APPROVED') {
-      if (!implementation.completedAt) {
-        setMessage(
-          'A mensalidade será autorizada depois que a implantação for concluída.'
-        );
-        return;
-      }
       if (implementation.planCode !== plan.code) {
         setMessage(
           'A implantação paga pertence a outro plano. Fale com o suporte para revisar a contratação.'
@@ -231,7 +225,7 @@ export function Subscription() {
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Erro ao criar pagamento da implantação.'
+          : 'Erro ao iniciar a contratação.'
       );
     } finally {
       setBusyPlan(null);
@@ -402,8 +396,8 @@ export function Subscription() {
                 Sua contratação
               </h1>
               <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
-                Acompanhe pagamento, agendamento, contrato e mensalidade em um
-                só lugar.
+                Acompanhe sua assinatura, o contrato e a implantação assistida
+                em um só lugar.
               </p>
             </div>
             <button
@@ -484,7 +478,7 @@ export function Subscription() {
                 href={billing.implementationOrder.checkoutUrl}
                 className="mt-5 inline-flex w-full justify-center rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white sm:w-auto"
               >
-                Continuar pagamento da implantação
+                Continuar contratação
               </a>
             )}
 
@@ -523,8 +517,17 @@ export function Subscription() {
           !implementationCompleted && (
             <InfoPanel
               icon={CalendarClock}
-              title="Pagamento confirmado"
-              text="O contrato foi gerado. Nossa equipe entrará em contato para agendar a implantação remota."
+              title="Contratação confirmada e acesso liberado"
+              text="Você já pode usar o sistema. A mensalidade está autorizada e nossa equipe entrará em contato para agendar a implantação assistida."
+              action={
+                <Link
+                  to="/painel"
+                  className="mt-4 inline-flex w-full justify-center rounded-xl bg-safe-dark px-4 py-3 text-sm font-black text-white sm:w-auto"
+                >
+                  Acessar o sistema
+                </Link>
+              }
+              positive
             />
           )}
 
@@ -554,7 +557,7 @@ export function Subscription() {
           <InfoPanel
             icon={CheckCircle2}
             title="Implantação concluída"
-            text="Autorize a mensalidade abaixo para ativar o plano e liberar o acesso completo."
+            text="A implantação foi concluída, mas a assinatura precisa ser revisada. Atualize a página ou fale com o suporte."
             positive
           />
         )}
@@ -571,7 +574,6 @@ export function Subscription() {
 
         {!loading &&
           !subscriptionActive &&
-          (!implementationPaid || implementationCompleted) &&
           visiblePlans.length > 0 && (
             <PlanCards
               plans={visiblePlans}
@@ -580,14 +582,13 @@ export function Subscription() {
               actionLabel={() =>
                 implementationPaid
                   ? 'Autorizar mensalidade'
-                  : 'Contratar'
+                  : 'Contratar e assinar'
               }
             />
           )}
 
         {!loading &&
           !subscriptionActive &&
-          (!implementationPaid || implementationCompleted) &&
           visiblePlans.length === 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center font-bold text-amber-900">
               Nenhum plano disponível para esta conta. Atualize os pagamentos
@@ -603,6 +604,7 @@ export function Subscription() {
             setForm={setForm}
             termsVersion={termsVersion}
             busy={busyPlan !== null}
+            errorMessage={message}
             onClose={() => setSelectedPlan(null)}
             onSubmit={createImplementationCheckout}
           />
@@ -619,6 +621,7 @@ function ContractModal({
   setForm,
   termsVersion,
   busy,
+  errorMessage,
   onClose,
   onSubmit,
 }: {
@@ -628,6 +631,7 @@ function ContractModal({
   setForm: (form: CheckoutForm) => void;
   termsVersion: string;
   busy: boolean;
+  errorMessage: string;
   onClose: () => void;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -661,16 +665,16 @@ function ContractModal({
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Input label="Nome/Razão social" value={form.customerName} onChange={(value) => field('customerName', value)} />
-          <Input label="CPF/CNPJ" value={form.customerDocument} onChange={(value) => field('customerDocument', value)} />
+          <Input label="Nome/Razão social" value={form.customerName} onChange={(value) => field('customerName', value)} minLength={3} maxLength={150} />
+          <Input label="CPF/CNPJ" value={form.customerDocument} onChange={(value) => field('customerDocument', value)} minLength={11} maxLength={20} inputMode="numeric" />
           <Input label="Telefone" value={form.customerPhone} onChange={(value) => field('customerPhone', value)} />
-          <Input label="CEP" value={form.postalCode} onChange={(value) => field('postalCode', value)} />
-          <Input label="Logradouro" value={form.street} onChange={(value) => field('street', value)} />
+          <Input label="CEP" value={form.postalCode} onChange={(value) => field('postalCode', value)} minLength={8} maxLength={10} inputMode="numeric" />
+          <Input label="Logradouro" value={form.street} onChange={(value) => field('street', value)} minLength={3} maxLength={150} />
           <Input label="Número" value={form.number} onChange={(value) => field('number', value)} />
           <Input label="Complemento" value={form.complement} onChange={(value) => field('complement', value)} required={false} />
           <Input label="Bairro" value={form.district} onChange={(value) => field('district', value)} />
           <Input label="Cidade" value={form.city} onChange={(value) => field('city', value)} />
-          <Input label="UF" value={form.state} onChange={(value) => field('state', value.toUpperCase().slice(0, 2))} />
+          <Input label="UF" value={form.state} onChange={(value) => field('state', value.toUpperCase().slice(0, 2))} minLength={2} maxLength={2} />
         </div>
 
         <div className="mt-5 max-h-64 overflow-y-auto rounded-2xl border bg-slate-50 p-4 text-sm leading-6 text-slate-600">
@@ -701,11 +705,17 @@ function ContractModal({
                 currency: 'BRL',
               })}
             </strong>
-            .
+            . A primeira cobrança corresponde à implantação; as cobranças
+            mensais seguintes serão automáticas.
           </p>
           <p className="mt-2">
             <strong>Implantação:</strong>{' '}
-            {plan.implementationItems.join('; ')}.
+            {(Array.isArray(plan.implementationItems)
+              ? plan.implementationItems
+              : []
+            ).join('; ') ||
+              'Configuração inicial, cadastro do estabelecimento e treinamento de implantação'}
+            .
           </p>
           <p className="mt-2">
             <strong>Prazo:</strong> atendimento remoto iniciado ou agendado em
@@ -713,8 +723,10 @@ function ContractModal({
             pagamento e o fornecimento das informações necessárias.
           </p>
           <p className="mt-2">
-            <strong>Ativação:</strong> o acesso completo será liberado depois
-            da conclusão da implantação e da autorização da mensalidade.
+            <strong>Ativação:</strong> ao concluir o checkout do Mercado Pago,
+            você paga a implantação e autoriza a mensalidade recorrente. Após a
+            confirmação, o acesso é liberado imediatamente, sem depender do
+            agendamento da implantação.
           </p>
           <p className="mt-2">
             <strong>Equipamentos:</strong> impressoras, etiquetas, termômetros e
@@ -740,15 +752,25 @@ function ContractModal({
           />
           <span>
             Li e aceito o contrato de implantação e licença mensal do
-            SafeKitchen Smart, autorizando o registro eletrônico deste aceite.
+            SafeKitchen Smart. Autorizo a cobrança inicial da implantação e as
+            cobranças mensais recorrentes informadas acima.
           </span>
         </label>
+
+        {errorMessage && (
+          <div
+            role="alert"
+            className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-800"
+          >
+            {errorMessage}
+          </div>
+        )}
 
         <button
           disabled={busy || !form.acceptedTerms}
           className="mt-5 w-full rounded-2xl bg-safe-green px-5 py-4 font-black text-white disabled:opacity-50"
         >
-          {busy ? 'Preparando contratação...' : 'Pagar implantação'}
+          {busy ? 'Preparando contratação...' : 'Contratar e autorizar cobrança'}
         </button>
       </form>
     </div>
@@ -760,11 +782,17 @@ function Input({
   value,
   onChange,
   required = true,
+  minLength,
+  maxLength,
+  inputMode,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
 }) {
   return (
     <label className="text-sm font-black text-safe-dark">
@@ -773,6 +801,9 @@ function Input({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required={required}
+        minLength={minLength}
+        maxLength={maxLength}
+        inputMode={inputMode}
         className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-medium outline-none focus:border-safe-green"
       />
     </label>

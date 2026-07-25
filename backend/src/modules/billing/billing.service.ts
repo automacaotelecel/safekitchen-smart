@@ -10,6 +10,7 @@ import { prisma } from '../../lib/prisma';
 import { getCommercialPlan, type PlanCode } from './plans';
 import { createSystemNotification } from '../notifications/notifications.service';
 import { activateContractIfEligible } from './contracts.service';
+import { confirmImplementationFromSubscription } from './implementations.service';
 
 function client(): MercadoPagoConfig {
   if (!env.mercadoPagoAccessToken) {
@@ -52,8 +53,8 @@ export async function createMercadoPagoCheckout(input: {
   const implementation = await prisma.implementationOrder.findFirst({
     where: { restaurantId: input.restaurantId, planCode: plan.code, status: 'APPROVED' },
   });
-  if (!implementation?.completedAt) {
-    throw new Error('A implantação precisa ser concluída antes da autorização da mensalidade.');
+  if (!implementation) {
+    throw new Error('A taxa de implantação precisa estar paga antes da autorização da mensalidade.');
   }
 
   const current = await prisma.subscription.findUnique({
@@ -154,28 +155,65 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
   const [restaurant, implementation] = await Promise.all([
     prisma.restaurant.findUnique({ where: { id: restaurantId } }),
     prisma.implementationOrder.findFirst({
-      where: { restaurantId, planCode: plan.code, status: 'APPROVED' },
+      where: {
+        restaurantId,
+        planCode: plan.code,
+        OR: [
+          { providerPreferenceId: providerSubscriptionId },
+          { status: 'APPROVED' },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
     }),
   ]);
   if (!restaurant) throw new Error('Conta vinculada à assinatura não encontrada.');
 
   const status = providerStatus(response.status);
   const now = new Date();
+  const providerAmountCents = Math.round(
+    Number(
+      response.auto_recurring?.transaction_amount ||
+        plan.amountCents / 100
+    ) * 100
+  );
   const trialStillActive = Boolean(
     restaurant.subscriptionStatus === 'TRIALING' &&
       restaurant.trialEndsAt &&
       restaurant.trialEndsAt >= now
   );
   const accountStatus =
-    status === 'ACTIVE' && implementation?.completedAt
+    status === 'ACTIVE'
       ? 'ACTIVE'
-      : status === 'ACTIVE' && implementation
-        ? 'AWAITING_IMPLEMENTATION'
-        : status === 'ACTIVE'
-        ? 'PENDING_IMPLEMENTATION'
-        : status === 'PENDING' && trialStillActive
-          ? 'TRIALING'
-          : status;
+      : status === 'PENDING' && trialStillActive
+        ? 'TRIALING'
+        : status;
+
+  if (status === 'ACTIVE') {
+    if (!implementation) {
+      throw new Error('Assinatura autorizada sem contrato de implantação vinculado.');
+    }
+
+    const isUnifiedCheckout =
+      implementation.providerPreferenceId === providerSubscriptionId;
+    if (isUnifiedCheckout && providerAmountCents !== plan.amountCents) {
+      await new PreApproval(client()).update({
+        id: providerSubscriptionId,
+        body: {
+          reason: `SafeKitchen Smart - Plano ${plan.name}`,
+          auto_recurring: {
+            transaction_amount: plan.amountCents / 100,
+            currency_id: plan.currency,
+          },
+        },
+      });
+    }
+
+    await confirmImplementationFromSubscription({
+      restaurantId,
+      planCode: plan.code,
+      providerSubscriptionId,
+    });
+  }
 
   await prisma.$transaction([
     prisma.subscription.upsert({
@@ -187,9 +225,7 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
         providerSubscriptionId,
         payerEmail: response.payer_email || null,
         checkoutUrl: response.init_point || null,
-        amountCents: Math.round(
-          Number(response.auto_recurring?.transaction_amount || plan.amountCents / 100) * 100
-        ),
+        amountCents: plan.amountCents,
         currency: response.auto_recurring?.currency_id || 'BRL',
         currentPeriodEnd: response.next_payment_date
           ? new Date(response.next_payment_date)
@@ -202,9 +238,7 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
         providerSubscriptionId,
         payerEmail: response.payer_email || undefined,
         checkoutUrl: response.init_point || undefined,
-        amountCents: Math.round(
-          Number(response.auto_recurring?.transaction_amount || plan.amountCents / 100) * 100
-        ),
+        amountCents: plan.amountCents,
         currency: response.auto_recurring?.currency_id || 'BRL',
         currentPeriodEnd: response.next_payment_date
           ? new Date(response.next_payment_date)
@@ -215,14 +249,8 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
     prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
-        plan:
-          status === 'ACTIVE' && implementation?.completedAt
-            ? plan.code
-            : restaurant.plan,
-        maxUsers:
-          status === 'ACTIVE' && implementation?.completedAt
-            ? plan.maxUsers
-            : restaurant.maxUsers,
+        plan: status === 'ACTIVE' ? plan.code : restaurant.plan,
+        maxUsers: status === 'ACTIVE' ? plan.maxUsers : restaurant.maxUsers,
         subscriptionStatus: accountStatus,
         subscriptionEndsAt:
           status === 'ACTIVE'
@@ -240,9 +268,7 @@ export async function syncMercadoPagoSubscription(providerSubscriptionId: string
       type: 'SUBSCRIPTION_ACTIVE',
       severity: 'INFO',
       title: 'Assinatura confirmada',
-      message: implementation?.completedAt
-        ? `O plano ${plan.name} está ativo e os recursos foram liberados.`
-        : `A mensalidade do plano ${plan.name} foi autorizada. A implantação precisa ser concluída para liberar o sistema.`,
+      message: `O plano ${plan.name} está ativo. A implantação foi paga, as mensalidades futuras estão autorizadas e o acesso foi liberado.`,
       link: '/assinatura',
       dedupeKey: `billing:${providerSubscriptionId}:active`,
     });
@@ -277,37 +303,47 @@ export async function syncMercadoPagoInvoice(invoiceId: string) {
   );
 
   if (approved) {
-    await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: { status: 'ACTIVE' },
-    });
-    await activateContractIfEligible(subscription.restaurantId);
+    const synced = await syncMercadoPagoSubscription(invoice.preapproval_id);
     await createSystemNotification({
       restaurantId: subscription.restaurantId,
       type: 'PAYMENT_APPROVED',
       severity: 'INFO',
       title: 'Pagamento aprovado',
-      message: 'A renovação do SafeKitchen Smart foi confirmada.',
+      message:
+        subscription.status === 'PENDING'
+          ? 'A contratação foi confirmada e o acesso ao SafeKitchen Smart está liberado.'
+          : 'A renovação do SafeKitchen Smart foi confirmada.',
       link: '/assinatura',
       dedupeKey: `invoice:${invoice.id}:approved`,
     });
+    return { subscription: synced || subscription, invoice, approved, rejected };
   } else if (rejected) {
+    const initialPayment = subscription.status === 'PENDING';
     await prisma.$transaction([
       prisma.subscription.update({
         where: { id: subscription.id },
-        data: { status: 'PAST_DUE' },
+        data: { status: initialPayment ? 'PENDING' : 'PAST_DUE' },
       }),
       prisma.restaurant.update({
         where: { id: subscription.restaurantId },
-        data: { subscriptionStatus: 'PAST_DUE', subscriptionEndsAt: addDays(new Date(), 3) },
+        data: {
+          subscriptionStatus: initialPayment ? 'PENDING' : 'PAST_DUE',
+          subscriptionEndsAt: initialPayment
+            ? null
+            : addDays(new Date(), 3),
+        },
       }),
     ]);
     await createSystemNotification({
       restaurantId: subscription.restaurantId,
       type: 'PAYMENT_FAILED',
       severity: 'CRITICAL',
-      title: 'Problema na renovação',
-      message: 'O pagamento não foi aprovado. Regularize a assinatura nos próximos 3 dias para evitar o bloqueio.',
+      title: initialPayment
+        ? 'Pagamento não aprovado'
+        : 'Problema na renovação',
+      message: initialPayment
+        ? 'A contratação não foi aprovada e o acesso ainda não foi liberado. Tente novamente com outro meio de pagamento.'
+        : 'O pagamento não foi aprovado. Regularize a assinatura nos próximos 3 dias para evitar o bloqueio.',
       link: '/assinatura',
       dedupeKey: `invoice:${invoice.id}:failed`,
     });

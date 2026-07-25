@@ -83,7 +83,7 @@ function requireBillingOperations(req: Request, res: Response, next: NextFunctio
 router.get('/plans', (_req, res) => {
   return ok(res, {
     enabled: env.mercadoPagoEnabled,
-    activationPolicy: 'IMPLEMENTATION_AND_SUBSCRIPTION_CONFIRMED',
+    activationPolicy: 'INITIAL_PAYMENT_AND_RECURRING_AUTHORIZATION_CONFIRMED',
     contractConfigured: env.contractProviderConfigured,
     contractTermsVersion: env.contractTermsVersion,
     contractProvider: env.contractProviderConfigured
@@ -363,7 +363,7 @@ router.post('/implementation-checkout', requireRole('ADMIN'), async (req, res) =
     });
     return ok(res, { order, checkoutUrl: order.checkoutUrl }, 201);
   } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar pagamento da implantação.', 502);
+    return fail(res, error instanceof Error ? error.message : 'Erro ao iniciar a contratação recorrente.', 502);
   }
 });
 
