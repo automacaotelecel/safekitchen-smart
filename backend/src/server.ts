@@ -10,6 +10,7 @@ import { prisma } from './lib/prisma';
 
 import accountRoutes from './modules/account/account.routes';
 import authRoutes from './modules/auth/auth.routes';
+import auditRoutes from './modules/audits/audits.routes';
 import billingRoutes from './modules/billing/billing.routes';
 import complianceRoutes from './modules/compliance/compliance.routes';
 import documentRoutes from './modules/documents/documents.routes';
@@ -139,6 +140,7 @@ app.get('/health', async (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/audits', auditRoutes);
 app.use('/api/billing', billingRoutes);
 app.post('/api/jobs/alerts', alertJobHandler);
 app.use('/api/account', accountRoutes);

@@ -39,6 +39,7 @@ type FormState = {
   observations: string;
   manualValidityValue: string;
   manualValidityUnit: 'days' | 'hours';
+  receivingTemperatureC: string;
 };
 
 type ExtraState = {
@@ -91,6 +92,7 @@ const initialForm: FormState = {
   observations: '',
   manualValidityValue: '',
   manualValidityUnit: 'days',
+  receivingTemperatureC: '',
 };
 
 const initialExtra: ExtraState = {
@@ -224,6 +226,7 @@ export function NewLabel() {
   const [search, setSearch] = useState('');
   const [created, setCreated] = useState<Label | null>(null);
   const [error, setError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sharingPdf, setSharingPdf] = useState(false);
 
@@ -248,6 +251,7 @@ export function NewLabel() {
   const shouldShowSupplierBatchAdditional = showSupplierBatchInAdditionalTypes.includes(form.type);
 
   useEffect(() => {
+    setCatalogError('');
     api<Product[]>('/api/products?includeInactive=0')
       .then((data) => {
         const activeProducts = Array.isArray(data)
@@ -308,9 +312,26 @@ export function NewLabel() {
           setSearch(product.name);
         }
       })
-      .catch(console.error);
+      .catch((loadError) => {
+        console.error(loadError);
+        setCatalogError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Não foi possível carregar o catálogo de produtos.'
+        );
+      });
 
-    api<Employee[]>('/api/employees').then(setEmployees).catch(console.error);
+    api<Employee[]>('/api/employees')
+      .then(setEmployees)
+      .catch((loadError) => {
+        console.error(loadError);
+        setCatalogError((current) =>
+          current ||
+          (loadError instanceof Error
+            ? loadError.message
+            : 'Não foi possível carregar os responsáveis.')
+        );
+      });
   }, [searchParams]);
 
   const productOptions = useMemo(() => {
@@ -575,6 +596,9 @@ export function NewLabel() {
         manualValidityUnit: form.manualValidityValue
           ? form.manualValidityUnit
           : null,
+        receivingTemperatureC: form.receivingTemperatureC
+          ? Number(form.receivingTemperatureC)
+          : null,
         extraData: buildExtraData(),
       };
 
@@ -635,7 +659,7 @@ export function NewLabel() {
       </div>
 
       <form onSubmit={submit} className="mt-8 grid gap-6 xl:grid-cols-[1fr_390px]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:p-5">
+        <section className="overflow-visible rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <label className="text-sm font-black text-slate-700 dark:text-slate-200">
@@ -713,6 +737,12 @@ export function NewLabel() {
               />
             )}
 
+            {catalogError && (
+              <div className="md:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+                {catalogError}
+              </div>
+            )}
+
             <SpecificFields
               type={form.type}
               extra={extra}
@@ -720,18 +750,20 @@ export function NewLabel() {
               toggleExtraArray={toggleExtraArray}
             />
 
-            <Input
-              label={isSampleLabel ? 'Produto da amostra' : 'Produto/produção'}
-              value={form.productName}
-              onChange={(value) =>
-                setForm((old) => ({
-                  ...old,
-                  productName: value,
-                }))
-              }
-              required
-              placeholder={isSampleLabel ? 'Ex.: salada, arroz, feijão, molho...' : undefined}
-            />
+            {isSampleLabel && (
+              <Input
+                label="Produto da amostra"
+                value={form.productName}
+                onChange={(value) =>
+                  setForm((old) => ({
+                    ...old,
+                    productName: value,
+                  }))
+                }
+                required
+                placeholder="Ex.: salada, arroz, feijão, molho..."
+              />
+            )}
 
             <ResponsibleFields
               employees={employees}
@@ -982,7 +1014,7 @@ function ProductSearch({
   return (
     <div className="md:col-span-2">
       <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-        Buscar produto
+        Produto/produção
       </label>
 
       <div
@@ -995,6 +1027,7 @@ function ProductSearch({
           <Search size={18} className="text-slate-400" />
 
           <input
+            required
             value={search}
             onFocus={() => setShowProductOptions(true)}
             onChange={(event) => {
@@ -1254,6 +1287,19 @@ function AdditionalFields({
               }))
             }
             placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
+          />
+
+          <Input
+            label="Temperatura de recebimento (°C)"
+            type="number"
+            value={form.receivingTemperatureC}
+            onChange={(value) =>
+              setForm((old) => ({
+                ...old,
+                receivingTemperatureC: value,
+              }))
+            }
+            placeholder="Opcional — será registrada no controle, não na etiqueta"
           />
 
           <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">

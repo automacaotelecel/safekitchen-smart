@@ -175,6 +175,57 @@ export type VisionIdentifyResponse = {
   warning: string;
 };
 
+export type RegulatorySource = {
+  id: string;
+  title: string;
+  authority: string;
+  jurisdiction: 'BR' | 'SP';
+  status: 'ACTIVE' | 'FUTURE';
+  effectiveFrom: string;
+  effectiveUntil?: string;
+  url: string;
+};
+
+export type RegulatoryAnswer = {
+  answer: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  sources: RegulatorySource[];
+  disclaimer: string;
+};
+
+export type AuditChecklistResult = 'CONFORM' | 'NON_CONFORM' | 'NOT_APPLICABLE';
+
+export type AuditChecklistItem = {
+  id: string;
+  section: string;
+  reference: string;
+  requirement: string;
+  evidenceHint: string;
+};
+
+export type AuditTemplate = {
+  id: string;
+  name: string;
+  version: string;
+  jurisdiction: 'BR' | 'SP';
+  disclaimer: string;
+  sources: RegulatorySource[];
+  items: AuditChecklistItem[];
+};
+
+export type AuditRecord = ComplianceRecord & {
+  data?: {
+    templateId?: string;
+    templateVersion?: string;
+    jurisdiction?: 'BR' | 'SP';
+    score?: number;
+    conform?: number;
+    nonConform?: number;
+    notApplicable?: number;
+    total?: number;
+  };
+};
+
 export type ApiResponse<T> = {
   ok: boolean;
   data: T;
@@ -237,7 +288,8 @@ export type ComplianceType =
   | 'RESERVOIR_CLEANING'
   | 'NON_ROUTINE_CLEANING'
   | 'TRAINING'
-  | 'RECEIVING';
+  | 'RECEIVING'
+  | 'AUDIT';
 
 export type ComplianceRecord = {
   id: string;
@@ -247,6 +299,7 @@ export type ComplianceRecord = {
   nextDueAt?: string | null;
   responsibleName: string;
   notes?: string | null;
+  data?: Record<string, unknown> | null;
   status: string;
   createdAt: string;
 };

@@ -9,7 +9,9 @@ import {
 import { api } from '../api/client';
 import type { ComplianceRecord, ComplianceType } from '../types';
 
-const typeLabels: Record<ComplianceType, string> = {
+type OperationalComplianceType = Exclude<ComplianceType, 'AUDIT'>;
+
+const typeLabels: Record<OperationalComplianceType, string> = {
   MAINTENANCE: 'Manutenção de equipamento',
   RESERVOIR_CLEANING: 'Higienização de reservatório',
   NON_ROUTINE_CLEANING: 'Higienização não rotineira',
@@ -34,12 +36,25 @@ function dueState(value?: string | null) {
 export function Compliance() {
   const [records, setRecords] = useState<ComplianceRecord[]>([]);
   const [form, setForm] = useState({
-    type: 'MAINTENANCE' as ComplianceType,
+    type: 'MAINTENANCE' as OperationalComplianceType,
     subject: '',
     occurredAt: localDateTimeInput(),
     nextDueAt: '',
     responsibleName: '',
     notes: '',
+    supplier: '',
+    packaging: '',
+    conservation: '',
+    temperatureC: '',
+    deliverer: '',
+    expirationDate: '',
+    maintenancePerformed: '',
+    productUsed: '',
+    contents: '',
+    workload: '',
+    participants: '',
+    shifts: '',
+    signatures: '',
   });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -74,6 +89,23 @@ export function Compliance() {
             ? new Date(form.nextDueAt).toISOString()
             : null,
           notes: form.notes || null,
+          data: {
+            supplier: form.supplier || null,
+            packaging: form.packaging || null,
+            conservation: form.conservation || null,
+            temperatureC: form.temperatureC ? Number(form.temperatureC) : null,
+            deliverer: form.deliverer || null,
+            expirationDate: form.expirationDate
+              ? new Date(`${form.expirationDate}T12:00:00`).toISOString()
+              : null,
+            maintenancePerformed: form.maintenancePerformed || null,
+            productUsed: form.productUsed || null,
+            contents: form.contents || null,
+            workload: form.workload || null,
+            participants: form.participants || null,
+            shifts: form.shifts || null,
+            signatures: form.signatures || null,
+          },
         }),
       });
 
@@ -83,6 +115,19 @@ export function Compliance() {
         occurredAt: localDateTimeInput(),
         nextDueAt: '',
         notes: '',
+        supplier: '',
+        packaging: '',
+        conservation: '',
+        temperatureC: '',
+        deliverer: '',
+        expirationDate: '',
+        maintenancePerformed: '',
+        productUsed: '',
+        contents: '',
+        workload: '',
+        participants: '',
+        shifts: '',
+        signatures: '',
       }));
       setMessage('Registro salvo com sucesso.');
       await load();
@@ -134,16 +179,24 @@ export function Compliance() {
               <select
                 value={form.type}
                 onChange={(event) =>
-                  setForm((old) => ({ ...old, type: event.target.value as ComplianceType }))
+                  setForm((old) => ({ ...old, type: event.target.value as OperationalComplianceType }))
                 }
                 className="input-base"
               >
-                {(Object.keys(typeLabels) as ComplianceType[]).map((type) => (
+                {(Object.keys(typeLabels) as OperationalComplianceType[]).map((type) => (
                   <option key={type} value={type}>{typeLabels[type]}</option>
                 ))}
               </select>
             </Field>
-            <Field label={form.type === 'TRAINING' ? 'Tema do treinamento' : 'Equipamento/assunto'}>
+            <Field
+              label={
+                form.type === 'TRAINING'
+                  ? 'Tema do treinamento'
+                  : form.type === 'RECEIVING'
+                    ? 'Produto'
+                    : 'Equipamento/assunto'
+              }
+            >
               <input
                 required
                 value={form.subject}
@@ -151,6 +204,155 @@ export function Compliance() {
                 className="input-base"
               />
             </Field>
+
+            {form.type === 'RECEIVING' && (
+              <>
+                <Field label="Fornecedor">
+                  <input
+                    value={form.supplier}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, supplier: event.target.value }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+                <Field label="Embalagem">
+                  <input
+                    value={form.packaging}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, packaging: event.target.value }))
+                    }
+                    className="input-base"
+                    placeholder="Ex.: íntegra, sem avarias"
+                  />
+                </Field>
+                <Field label="Conservação">
+                  <select
+                    value={form.conservation}
+                    onChange={(event) =>
+                      setForm((old) => ({
+                        ...old,
+                        conservation: event.target.value,
+                      }))
+                    }
+                    className="input-base"
+                  >
+                    <option value="">Selecionar</option>
+                    <option value="AMBIENTE">Ambiente</option>
+                    <option value="REFRIGERADO">Refrigerado</option>
+                    <option value="CONGELADO">Congelado</option>
+                  </select>
+                </Field>
+                <Field label="Temperatura de recebimento (°C)">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={form.temperatureC}
+                    onChange={(event) =>
+                      setForm((old) => ({
+                        ...old,
+                        temperatureC: event.target.value,
+                      }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+                <Field label="Entregador">
+                  <input
+                    value={form.deliverer}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, deliverer: event.target.value }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+                <Field label="Data de validade">
+                  <input
+                    type="date"
+                    value={form.expirationDate}
+                    onChange={(event) =>
+                      setForm((old) => ({
+                        ...old,
+                        expirationDate: event.target.value,
+                      }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+              </>
+            )}
+
+            {form.type === 'MAINTENANCE' && (
+              <Field label="Manutenção realizada">
+                <input
+                  value={form.maintenancePerformed}
+                  onChange={(event) =>
+                    setForm((old) => ({
+                      ...old,
+                      maintenancePerformed: event.target.value,
+                    }))
+                  }
+                  className="input-base"
+                />
+              </Field>
+            )}
+
+            {form.type === 'NON_ROUTINE_CLEANING' && (
+              <Field label="Produto utilizado">
+                <input
+                  value={form.productUsed}
+                  onChange={(event) =>
+                    setForm((old) => ({ ...old, productUsed: event.target.value }))
+                  }
+                  className="input-base"
+                />
+              </Field>
+            )}
+
+            {form.type === 'TRAINING' && (
+              <>
+                <Field label="Conteúdos">
+                  <textarea
+                    value={form.contents}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, contents: event.target.value }))
+                    }
+                    className="input-base min-h-20"
+                  />
+                </Field>
+                <Field label="Carga horária">
+                  <input
+                    value={form.workload}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, workload: event.target.value }))
+                    }
+                    className="input-base"
+                    placeholder="Ex.: 2 horas"
+                  />
+                </Field>
+                <Field label="Participantes">
+                  <input
+                    value={form.participants}
+                    onChange={(event) =>
+                      setForm((old) => ({
+                        ...old,
+                        participants: event.target.value,
+                      }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+                <Field label="Turnos">
+                  <input
+                    value={form.shifts}
+                    onChange={(event) =>
+                      setForm((old) => ({ ...old, shifts: event.target.value }))
+                    }
+                    className="input-base"
+                  />
+                </Field>
+              </>
+            )}
             <Field label="Data realizada">
               <input
                 required
@@ -216,7 +418,10 @@ export function Compliance() {
                           </span>
                         </div>
                         <p className="mt-2 text-xs font-semibold text-slate-500">
-                          {typeLabels[record.type]} • realizado em{' '}
+                          {record.type === 'AUDIT'
+                            ? 'Auditoria sanitária'
+                            : typeLabels[record.type]}{' '}
+                          • realizado em{' '}
                           {new Date(record.occurredAt).toLocaleString('pt-BR')} •{' '}
                           {record.responsibleName}
                         </p>
@@ -252,4 +457,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default Compliance;
-

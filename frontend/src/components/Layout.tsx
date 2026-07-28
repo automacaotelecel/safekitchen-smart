@@ -19,6 +19,7 @@ import {
   Bell,
   FileBarChart,
   CreditCard,
+  ShieldCheck,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -33,6 +34,7 @@ const links = [
   { to: '/temperaturas', label: 'Temperaturas', icon: Thermometer },
   { to: '/documentos', label: 'Documentos', icon: FolderClock },
   { to: '/controles', label: 'Controles', icon: ClipboardCheck },
+  { to: '/auditorias', label: 'Auditoria RDC 216', icon: ShieldCheck },
   { to: '/relatorios', label: 'Dossiê e relatórios', icon: FileBarChart },
   { to: '/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/ia', label: 'Sana · Assistente', icon: Sparkles },

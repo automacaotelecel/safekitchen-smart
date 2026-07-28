@@ -155,7 +155,8 @@ export async function shareOrOpenPdfFromUrl(
     openBlobInNewTab(blob);
     return {
       mode: 'opened' as const,
-      message: 'PDF aberto em nova aba. Use Ctrl+P ou o botão de imprimir do navegador.',
+      message:
+        'PDF térmico 50 × 30 mm aberto. Use Ctrl+P ou importe o arquivo no aplicativo oficial Nimbot para a B21.',
     };
   }
 
@@ -184,8 +185,8 @@ export async function shareOrOpenPdfFromUrl(
 
   return {
     mode: 'opened' as const,
-    message:
-      'PDF aberto. No celular, use o menu do navegador/visualizador para imprimir ou compartilhar.',
+      message:
+        'PDF térmico 50 × 30 mm aberto. No celular, compartilhe o arquivo com o aplicativo oficial Nimbot para a B21.',
   };
 }
 
@@ -224,14 +225,14 @@ export async function shareOrOpenPdfFromPost(
   return {
     mode: 'opened' as const,
     message:
-      'PDF aberto. Use a opção de imprimir, salvar ou compartilhar do navegador/visualizador.',
+      'PDF térmico 50 × 30 mm aberto. Imprima pelo navegador ou importe no aplicativo oficial Nimbot.',
   };
 }
 
 export function getMobilePrintHelpText() {
   if (!isMobileDevice()) {
-    return 'No computador, o PDF será aberto em uma nova aba para impressão.';
+    return 'No computador, o PDF térmico 50 × 30 mm será aberto em uma nova aba para impressão.';
   }
 
-  return 'No celular, o sistema abre o compartilhamento quando possível. Se não abrir, o PDF será exibido para você tocar em Compartilhar ou Imprimir.';
+  return 'No celular, o sistema abre o compartilhamento quando possível. Para a Nimbot B21, compartilhe ou importe o PDF térmico no aplicativo oficial Nimbot.';
 }

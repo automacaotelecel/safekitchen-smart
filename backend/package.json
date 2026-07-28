@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
-    "start": "prisma migrate deploy && node dist/server.js",
+    "start": "prisma migrate deploy && tsx prisma/seed.ts && node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -17,6 +17,9 @@
     "setup": "npm install && npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
     "check": "tsc --noEmit && prisma validate",
     "test": "npm run build && node --test tests/*.test.cjs"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",
@@ -29,6 +32,7 @@
     "express": "^4.21.2",
     "express-async-errors": "^3.1.1",
     "express-rate-limit": "^7.5.0",
+    "fflate": "^0.8.3",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mercadopago": "^3.2.0",

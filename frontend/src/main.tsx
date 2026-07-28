@@ -26,6 +26,7 @@ const Plans = lazy(() => import('./pages/Plans').then((module) => ({ default: mo
 const Subscription = lazy(() => import('./pages/Subscription').then((module) => ({ default: module.Subscription })));
 const Notifications = lazy(() => import('./pages/Notifications').then((module) => ({ default: module.Notifications })));
 const Reports = lazy(() => import('./pages/Reports').then((module) => ({ default: module.Reports })));
+const Audits = lazy(() => import('./pages/Audits').then((module) => ({ default: module.Audits })));
 const Layout = lazy(() => import('./components/Layout').then((module) => ({ default: module.Layout })));
 
 function PageLoader() {
@@ -80,6 +81,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
               <Route path="/conta" element={<Account />} />
               <Route path="/notificacoes" element={<Notifications />} />
               <Route path="/relatorios" element={<Reports />} />
+              <Route path="/auditorias" element={<Audits />} />
             </Route>
 
             <Route

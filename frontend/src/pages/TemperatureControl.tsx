@@ -66,6 +66,7 @@ export function TemperatureControl() {
     occurredAt: localDateTimeInput(),
     responsibleName: '',
     notes: '',
+    destination: '',
   });
   const [pointForm, setPointForm] = useState({
     name: '',
@@ -130,6 +131,9 @@ export function TemperatureControl() {
           occurredAt: new Date(form.occurredAt).toISOString(),
           responsibleName: form.responsibleName,
           notes: form.notes || null,
+          metadata: {
+            destination: form.destination || null,
+          },
         }),
       });
 
@@ -141,6 +145,7 @@ export function TemperatureControl() {
         tertiaryTemperatureC: '',
         occurredAt: localDateTimeInput(),
         notes: '',
+        destination: '',
       }));
       setMessage('Medição registrada com sucesso.');
       await load();
@@ -208,7 +213,13 @@ export function TemperatureControl() {
   }
 
   const pointsForCategory = points.filter((point) => point.category === form.category);
-  const showFollowUpTemperatures = ['DELIVERY', 'DISTRIBUTION', 'REFRIGERATED_FOOD'].includes(
+  const showSecondaryTemperature = [
+    'DELIVERY',
+    'DISTRIBUTION',
+    'REFRIGERATED_FOOD',
+    'READY_FOOD',
+  ].includes(form.category);
+  const showTertiaryTemperature = ['DELIVERY', 'DISTRIBUTION'].includes(
     form.category
   );
 
@@ -322,9 +333,31 @@ export function TemperatureControl() {
               />
             </Field>
 
-            {showFollowUpTemperatures && (
+            {form.category === 'READY_FOOD' && (
+              <Field label="Destino do produto">
+                <input
+                  value={form.destination}
+                  onChange={(event) =>
+                    setForm((old) => ({
+                      ...old,
+                      destination: event.target.value,
+                    }))
+                  }
+                  className="input-base"
+                  placeholder="Ex.: distribuição, resfriamento"
+                />
+              </Field>
+            )}
+
+            {showSecondaryTemperature && (
               <>
-                <Field label="Temperatura após 2h (°C)">
+                <Field
+                  label={
+                    form.category === 'READY_FOOD'
+                      ? 'Temperatura final para distribuição (°C)'
+                      : 'Temperatura após 2h (°C)'
+                  }
+                >
                   <input
                     type="number"
                     step="0.1"
@@ -338,6 +371,11 @@ export function TemperatureControl() {
                     className="input-base"
                   />
                 </Field>
+              </>
+            )}
+
+            {showTertiaryTemperature && (
+              <>
                 <Field label="Temperatura após 4h/final (°C)">
                   <input
                     type="number"
@@ -614,4 +652,3 @@ function SummaryCard({
 }
 
 export default TemperatureControl;
-

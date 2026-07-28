@@ -38,12 +38,12 @@ const benefits = [
   {
     icon: FileCheck2,
     title: 'Registros prontos para auditoria',
-    text: 'Centralize documentos, evidências e relatórios para uma rotina mais rastreável.',
+    text: 'Use checklist RDC 216, centralize evidências e exporte planilhas operacionais padronizadas.',
   },
   {
     icon: Sparkles,
     title: 'Sana, sua assistente inteligente',
-    text: 'Use inteligência artificial para apoiar a leitura de produtos e acelerar tarefas repetitivas.',
+    text: 'Apoie a leitura de produtos e consulte uma base regulatória curada com fontes oficiais.',
   },
 ];
 
@@ -77,6 +77,8 @@ const comparison = [
   ['Sistema de etiquetas', 'Incluído', 'Incluído'],
   ['Impressão pelo sistema', 'Incluída', 'Incluída'],
   ['Registros digitais', 'Incluídos', 'Incluídos'],
+  ['Checklist de auditoria RDC 216', 'Incluído', 'Incluído'],
+  ['Planilhas operacionais em XLSX', 'Incluídas', 'Incluídas'],
   ['Controle de temperatura', 'Manual', 'Automatizado'],
   ['Histórico de temperaturas', 'Incluído', 'Incluído'],
   ['Alertas de temperatura', '—', 'Incluídos'],

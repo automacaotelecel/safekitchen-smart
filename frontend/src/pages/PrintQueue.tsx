@@ -310,7 +310,12 @@ export function PrintQueue() {
         </div>
 
         <div className="mt-4 rounded-2xl bg-safe-soft px-4 py-3 text-xs font-bold leading-5 text-safe-dark">
-          {getMobilePrintHelpText()}
+          <p>{getMobilePrintHelpText()}</p>
+          <p className="mt-1">
+            Perfil homologado: <strong>Nimbot B21 • etiqueta 50 × 30 mm</strong>.
+            O PDF é gerado no tamanho térmico real e pode ser importado no aplicativo
+            oficial da Nimbot.
+          </p>
         </div>
 
         <div className="relative mt-5">

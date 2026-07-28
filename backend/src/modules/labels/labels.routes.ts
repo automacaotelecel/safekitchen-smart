@@ -39,6 +39,7 @@ const labelSchema = z.object({
   observations: z.string().optional().nullable(),
   manualValidityValue: z.number().optional().nullable(),
   manualValidityUnit: z.enum(['days', 'hours']).optional().nullable(),
+  receivingTemperatureC: z.number().min(-100).max(100).optional().nullable(),
   extraData: z.record(z.any()).optional().nullable(),
 });
 
@@ -225,27 +226,56 @@ router.post('/', async (req, res) => {
 
   const normalizedExtraData = parsed.data.extraData || {};
 
-  const label = await prisma.label.create({
-    data: {
-      restaurantId: req.user.restaurantId,
-      productId: parsed.data.productId || null,
-      employeeId: parsed.data.employeeId || null,
-      type: parsed.data.type,
-      productName: parsed.data.productName.trim(),
-      brand: normalizeText(parsed.data.brand),
-      supplier: normalizeText(parsed.data.supplier),
-      batch: normalizeText(parsed.data.batch),
-      conservationMode: parsed.data.conservationMode,
-      openedAt,
-      expiresAt,
-      quantity: normalizeText(parsed.data.quantity),
-      responsibleName: parsed.data.responsibleName.trim(),
-      observations: normalizeText(parsed.data.observations),
-      extraData: Object.keys(normalizedExtraData).length
-        ? JSON.stringify(normalizedExtraData)
-        : null,
-      status: 'ATIVA',
-    },
+  const label = await prisma.$transaction(async (tx) => {
+    const createdLabel = await tx.label.create({
+      data: {
+        restaurantId: req.user!.restaurantId,
+        productId: parsed.data.productId || null,
+        employeeId: parsed.data.employeeId || null,
+        type: parsed.data.type,
+        productName: parsed.data.productName.trim(),
+        brand: normalizeText(parsed.data.brand),
+        supplier: normalizeText(parsed.data.supplier),
+        batch: normalizeText(parsed.data.batch),
+        conservationMode: parsed.data.conservationMode,
+        openedAt,
+        expiresAt,
+        quantity: normalizeText(parsed.data.quantity),
+        responsibleName: parsed.data.responsibleName.trim(),
+        observations: normalizeText(parsed.data.observations),
+        extraData: Object.keys(normalizedExtraData).length
+          ? JSON.stringify(normalizedExtraData)
+          : null,
+        status: 'ATIVA',
+      },
+    });
+
+    if (parsed.data.receivingTemperatureC !== null && parsed.data.receivingTemperatureC !== undefined) {
+      await tx.complianceRecord.create({
+        data: {
+          restaurantId: req.user!.restaurantId,
+          createdById: req.user!.userId,
+          type: 'RECEIVING',
+          subject: parsed.data.productName.trim(),
+          occurredAt: openedAt,
+          responsibleName: parsed.data.responsibleName.trim(),
+          notes: normalizeText(parsed.data.observations),
+          data: {
+            labelId: createdLabel.id,
+            productId: parsed.data.productId || null,
+            productName: parsed.data.productName.trim(),
+            supplier: normalizeText(parsed.data.supplier),
+            packaging: '',
+            conservation: parsed.data.conservationMode,
+            temperatureC: parsed.data.receivingTemperatureC,
+            deliverer: '',
+            expirationDate: expiresAt?.toISOString() || null,
+          },
+        },
+      });
+    }
+
+    return createdLabel;
   });
 
   await recordAudit({
@@ -254,7 +284,13 @@ router.post('/', async (req, res) => {
     action: 'CREATE',
     entity: 'Label',
     entityId: label.id,
-    metadata: { type: label.type, productName: label.productName },
+    metadata: {
+      type: label.type,
+      productName: label.productName,
+      receivingRecorded:
+        parsed.data.receivingTemperatureC !== null &&
+        parsed.data.receivingTemperatureC !== undefined,
+    },
   });
 
   return ok(res, label, 201);

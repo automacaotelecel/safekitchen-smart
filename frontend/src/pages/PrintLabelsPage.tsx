@@ -263,8 +263,10 @@ export function PrintLabelsPage() {
       </div>
 
       <div className="no-print print-page-help">
-        <strong>Celular:</strong> se a janela de impressão não abrir sozinha, toque em <b>Imprimir agora</b>.
-        No iPhone/Android, a impressão depende do navegador e da impressora instalada no aparelho.
+        <strong>Nimbot B21:</strong> use etiqueta 50 × 30 mm. Se a janela não abrir,
+        toque em <b>Imprimir agora</b>. No celular, use também o PDF térmico da Central
+        de impressão para importar no aplicativo oficial Nimbot. A impressão Bluetooth
+        silenciosa depende do SDK oficial do fabricante.
       </div>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}

@@ -68,7 +68,9 @@ router.get('/', async (req, res) => {
     where: {
       restaurantId: req.user.restaurantId,
       status: 'ACTIVE',
-      ...(types.includes(type as (typeof types)[number]) ? { type } : {}),
+      ...(types.includes(type as (typeof types)[number])
+        ? { type }
+        : { type: { not: 'AUDIT' } }),
     },
     orderBy: [{ nextDueAt: 'asc' }, { occurredAt: 'desc' }],
     take: 500,

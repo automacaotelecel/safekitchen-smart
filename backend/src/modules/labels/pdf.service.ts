@@ -303,87 +303,163 @@ function createPdfBuffer(draw: (doc: PDFKit.PDFDocument) => void): Promise<Buffe
   });
 }
 
-export async function generateLabelPdf(label: LabelLike): Promise<Buffer> {
-  return createPdfBuffer((doc) => {
+const MILLIMETER_IN_POINTS = 72 / 25.4;
+const B21_LABEL_WIDTH = 50 * MILLIMETER_IN_POINTS;
+const B21_LABEL_HEIGHT = 30 * MILLIMETER_IN_POINTS;
+
+function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
+  const margin = 5;
+  const contentWidth = B21_LABEL_WIDTH - margin * 2;
+  const canceled = label.status === 'CANCELADA';
+
+  doc
+    .rect(0, 0, B21_LABEL_WIDTH, B21_LABEL_HEIGHT)
+    .fillColor('#ffffff')
+    .fill();
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(5.2)
+    .fillColor('#111111')
+    .text(labelTypeName(label.type).toUpperCase(), margin, 4, {
+      width: contentWidth,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true,
+    });
+
+  doc
+    .moveTo(margin, 11)
+    .lineTo(B21_LABEL_WIDTH - margin, 11)
+    .lineWidth(0.5)
+    .strokeColor('#111111')
+    .stroke();
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8.5)
+    .fillColor('#000000')
+    .text(label.productName || 'PRODUTO', margin, 14, {
+      width: contentWidth,
+      height: 19,
+      align: 'center',
+      ellipsis: true,
+    });
+
+  const leftX = margin;
+  const rightX = B21_LABEL_WIDTH / 2 + 1;
+  const columnWidth = B21_LABEL_WIDTH / 2 - margin - 3;
+
+  function compactRow(title: string, value: string, x: number, y: number) {
     doc
       .font('Helvetica-Bold')
+      .fontSize(4.4)
+      .fillColor('#111111')
+      .text(`${title}:`, x, y, {
+        width: columnWidth,
+        lineBreak: false,
+        ellipsis: true,
+      });
+
+    doc
+      .font('Helvetica')
+      .fontSize(4.8)
+      .text(value || '—', x, y + 5, {
+        width: columnWidth,
+        lineBreak: false,
+        ellipsis: true,
+      });
+  }
+
+  compactRow(
+    label.type === 'AMOSTRAS' ? 'Coleta' : 'Data base',
+    brDateTime(label.openedAt),
+    leftX,
+    36
+  );
+  compactRow(
+    label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade',
+    brDateTime(label.expiresAt),
+    rightX,
+    36
+  );
+  compactRow('Responsável', label.responsibleName || '—', leftX, 49);
+  compactRow('Conservação', conservationName(label.conservationMode), rightX, 49);
+  compactRow('Lote', label.batch || '—', leftX, 62);
+  compactRow(
+    label.quantity ? 'Quantidade' : label.brand ? 'Marca' : 'Fornecedor',
+    label.quantity || label.brand || label.supplier || '—',
+    rightX,
+    62
+  );
+
+  doc
+    .moveTo(margin, 75)
+    .lineTo(B21_LABEL_WIDTH - margin, 75)
+    .lineWidth(0.35)
+    .dash(1, { space: 1 })
+    .strokeColor('#555555')
+    .stroke()
+    .undash();
+
+  doc
+    .font('Helvetica')
+    .fontSize(3.7)
+    .fillColor('#444444')
+    .text(`SafeKitchen Smart • ${label.id}`, margin, 77, {
+      width: contentWidth,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true,
+    });
+
+  if (canceled) {
+    doc
+      .save()
+      .rotate(-15, { origin: [B21_LABEL_WIDTH / 2, B21_LABEL_HEIGHT / 2] })
+      .font('Helvetica-Bold')
       .fontSize(16)
-      .fillColor('#0f172a')
-      .text('SafeKitchen Smart', {
+      .fillColor('#000000')
+      .opacity(0.18)
+      .text('CANCELADA', 12, 38, {
+        width: B21_LABEL_WIDTH - 24,
         align: 'center',
-      });
+      })
+      .opacity(1)
+      .restore();
+  }
+}
 
-    doc
-      .moveDown(0.3)
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor('#64748b')
-      .text('Etiqueta de controle de qualidade', {
-        align: 'center',
-      });
+function createThermalPdfBuffer(labels: LabelLike[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: [B21_LABEL_WIDTH, B21_LABEL_HEIGHT],
+      margin: 0,
+      bufferPages: true,
+      autoFirstPage: false,
+    });
+    const chunks: Buffer[] = [];
 
-    drawLabel(doc, label, 170, 110);
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
-    doc
-      .font('Helvetica')
-      .fontSize(8)
-      .fillColor('#64748b')
-      .text(`Gerado em ${brDateTime(new Date())}`, 28, 760, {
-        width: 540,
-        align: 'center',
+    for (const label of labels) {
+      doc.addPage({
+        size: [B21_LABEL_WIDTH, B21_LABEL_HEIGHT],
+        margin: 0,
       });
+      drawThermalLabel(doc, label);
+    }
+
+    doc.end();
   });
 }
 
+export async function generateLabelPdf(label: LabelLike): Promise<Buffer> {
+  return createThermalPdfBuffer([label]);
+}
+
 export async function generateBatchLabelsPdf(labels: LabelLike[]): Promise<Buffer> {
-  return createPdfBuffer((doc) => {
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(14)
-      .fillColor('#0f172a')
-      .text('SafeKitchen Smart - Impressão em lote', {
-        align: 'center',
-      });
-
-    doc
-      .moveDown(0.2)
-      .font('Helvetica')
-      .fontSize(8)
-      .fillColor('#64748b')
-      .text(`Gerado em ${brDateTime(new Date())}`, {
-        align: 'center',
-      });
-
-    const startX = 32;
-    const startY = 70;
-    const gapX = 24;
-    const gapY = 18;
-    const labelW = 255;
-    const labelH = 165;
-
-    let x = startX;
-    let y = startY;
-    let col = 0;
-
-    labels.forEach((label, index) => {
-      if (index > 0 && index % 8 === 0) {
-        doc.addPage();
-        x = startX;
-        y = startY;
-        col = 0;
-      }
-
-      drawLabel(doc, label, x, y);
-
-      col += 1;
-
-      if (col === 2) {
-        col = 0;
-        x = startX;
-        y += labelH + gapY;
-      } else {
-        x = startX + labelW + gapX;
-      }
-    });
-  });
+  return createThermalPdfBuffer(labels);
 }

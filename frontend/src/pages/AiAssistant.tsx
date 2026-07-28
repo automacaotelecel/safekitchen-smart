@@ -6,11 +6,17 @@ import {
   Sparkles,
   X,
   ArrowRight,
+  BookOpenCheck,
+  ExternalLink,
+  Send,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { api } from '../api/client';
-import type { VisionIdentifyResponse } from '../types';
+import type {
+  RegulatoryAnswer,
+  VisionIdentifyResponse,
+} from '../types';
 
 type AiHealth = {
   enabled: boolean;
@@ -65,6 +71,12 @@ export function AiAssistant() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [message, setMessage] = useState('');
+  const [regulatoryQuestion, setRegulatoryQuestion] = useState('');
+  const [jurisdiction, setJurisdiction] = useState<'BR' | 'SP'>('BR');
+  const [regulatoryAnswer, setRegulatoryAnswer] =
+    useState<RegulatoryAnswer | null>(null);
+  const [askingRegulation, setAskingRegulation] = useState(false);
+  const [regulatoryMessage, setRegulatoryMessage] = useState('');
 
   async function loadHealth() {
     setChecking(true);
@@ -143,6 +155,36 @@ export function AiAssistant() {
       })
     );
     navigate('/nova-etiqueta');
+  }
+
+  async function askRegulation() {
+    if (regulatoryQuestion.trim().length < 5) {
+      setRegulatoryMessage('Escreva uma pergunta com um pouco mais de detalhe.');
+      return;
+    }
+
+    setAskingRegulation(true);
+    setRegulatoryMessage('');
+    setRegulatoryAnswer(null);
+
+    try {
+      const data = await api<RegulatoryAnswer>('/api/vision/ask-regulation', {
+        method: 'POST',
+        body: JSON.stringify({
+          question: regulatoryQuestion.trim(),
+          jurisdiction,
+        }),
+      });
+      setRegulatoryAnswer(data);
+    } catch (error) {
+      setRegulatoryMessage(
+        error instanceof Error
+          ? error.message
+          : 'A Sana não conseguiu consultar a base regulatória.'
+      );
+    } finally {
+      setAskingRegulation(false);
+    }
   }
 
   return (
@@ -284,6 +326,104 @@ export function AiAssistant() {
             </div>
           )}
         </aside>
+      </section>
+
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#202020] sm:rounded-[28px] sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-safe-soft text-safe-green">
+            <BookOpenCheck size={23} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-safe-green">
+              Base regulatória oficial
+            </p>
+            <h2 className="mt-1 text-2xl font-black text-safe-dark dark:text-white">
+              Pergunte à Sana sobre Boas Práticas
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-300">
+              Consulte a RDC Anvisa nº 216/2004 e, para São Paulo, a transição entre
+              as Portarias CVS nº 5/2013 e nº 3/2026. A resposta mostra as fontes
+              utilizadas e não substitui o responsável técnico.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[180px_1fr_auto]">
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+              Jurisdição
+            </span>
+            <select
+              value={jurisdiction}
+              onChange={(event) =>
+                setJurisdiction(event.target.value as 'BR' | 'SP')
+              }
+              className="input-base mt-2"
+            >
+              <option value="BR">Nacional</option>
+              <option value="SP">São Paulo</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+              Pergunta
+            </span>
+            <textarea
+              value={regulatoryQuestion}
+              onChange={(event) => setRegulatoryQuestion(event.target.value)}
+              className="input-base mt-2 min-h-[52px] resize-y"
+              placeholder="Ex.: O que devo verificar no recebimento de alimentos refrigerados?"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={askRegulation}
+            disabled={askingRegulation}
+            className="mt-6 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-safe-dark px-5 py-3 text-sm font-black text-white disabled:opacity-60"
+          >
+            {askingRegulation ? (
+              <Loader2 size={17} className="animate-spin" />
+            ) : (
+              <Send size={17} />
+            )}
+            {askingRegulation ? 'Consultando...' : 'Perguntar'}
+          </button>
+        </div>
+
+        {regulatoryMessage && (
+          <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-700">
+            {regulatoryMessage}
+          </p>
+        )}
+
+        {regulatoryAnswer && (
+          <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-5">
+            <p className="whitespace-pre-wrap text-sm font-semibold leading-7 text-safe-dark">
+              {regulatoryAnswer.answer}
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {regulatoryAnswer.sources.map((source) => (
+                <a
+                  key={source.id}
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700"
+                >
+                  {source.title}
+                  <ExternalLink size={12} />
+                </a>
+              ))}
+            </div>
+
+            <p className="mt-4 text-xs font-bold leading-5 text-slate-500">
+              {regulatoryAnswer.disclaimer}
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );
