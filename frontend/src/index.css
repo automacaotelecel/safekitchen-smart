@@ -518,72 +518,94 @@ html.dark aside:not(.app-content aside) {
    Substitui qualquer configuração anterior de impressão
    ========================================================= */
 @media print {
-  /* 1. Define o tamanho exato da etiqueta térmica */
   @page {
     size: 50mm 30mm;
     margin: 0;
   }
 
+  html,
   body {
+    width: 50mm !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
     background: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* 2. Oculta tudo o que não for a etiqueta */
+  #root {
+    width: 50mm !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
   .no-print, 
   .print-page-toolbar, 
   .print-page-help {
     display: none !important;
-    background: transparent !important;
   }
 
   .print-page-screen {
     display: block !important;
+    width: 50mm !important;
+    height: auto !important;
     min-height: 0 !important;
+    margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
     background: transparent !important;
   }
 
-  /* 3. Prepara a folha e os cards para o tamanho correto */
   .print-label-sheet {
     display: block !important;
+    width: 50mm !important;
+    height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
   }
 
   .print-label-card {
+    display: block !important;
     width: 50mm !important;
     height: 30mm !important;
+    min-height: 30mm !important;
+    max-height: 30mm !important;
     margin: 0 !important;
-    padding: 2mm !important; /* Respiro interno */
-    border: none !important; /* Remove bordas visíveis na etiqueta */
+    padding: 2mm !important;
+    border: none !important;
+    border-radius: 0 !important;
     box-shadow: none !important;
     box-sizing: border-box;
-    
-    /* Força quebra de página a cada etiqueta */
-    page-break-after: always; 
+    break-inside: avoid;
     page-break-inside: avoid;
-    overflow: hidden; 
-    
-    /* Ajuste de fontes */
+    overflow: hidden !important;
     font-family: Arial, sans-serif !important;
     font-size: 7px !important;
     line-height: 1.1 !important;
     color: black !important;
   }
 
-  .print-label-card:last-child {
-    page-break-after: auto;
+  .print-label-card + .print-label-card {
+    break-before: page;
+    page-break-before: always;
   }
 
   .print-label-body {
     padding: 0 !important;
   }
 
-  /* Ajustes internos para caber nos 30mm */
   .print-label-header {
     background: transparent !important;
     color: black !important;

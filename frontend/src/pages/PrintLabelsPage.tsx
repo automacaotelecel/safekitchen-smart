@@ -263,10 +263,11 @@ export function PrintLabelsPage() {
       </div>
 
       <div className="no-print print-page-help">
-        <strong>Nimbot B21:</strong> use etiqueta 50 × 30 mm. Se a janela não abrir,
-        toque em <b>Imprimir agora</b>. No celular, use também o PDF térmico da Central
-        de impressão para importar no aplicativo oficial Nimbot. A impressão Bluetooth
-        silenciosa depende do SDK oficial do fabricante.
+        <strong>Niimbot B21:</strong> conecte a impressora por USB e instale o software
+        oficial da Niimbot no Windows. Na janela de impressão, selecione a B21, use papel
+        50 × 30 mm, escala 100%, margens ausentes e desative cabeçalhos e rodapés. Se a
+        B21 não aparecer em Destino, ela ainda não está registrada como impressora do
+        Windows.
       </div>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}
