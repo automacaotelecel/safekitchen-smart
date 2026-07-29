@@ -2,7 +2,6 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 
 import { env } from '../../config/env';
-import { sendAlertEmail } from '../../lib/email';
 import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware } from '../auth/auth.middleware';
@@ -52,15 +51,29 @@ router.get('/', async (req, res) => {
 
 router.get('/summary', async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
+  await generateAlertsForRestaurant(req.user.restaurantId);
+  void dispatchPendingEmails(req.user.restaurantId).catch(console.error);
+
   const preference = await prisma.notificationPreference.findUnique({
     where: { userId: req.user.userId },
   });
-  const unread = preference && !preference.inAppEnabled
-    ? 0
-    : await prisma.notification.count({
-        where: { userId: req.user.userId, restaurantId: req.user.restaurantId, readAt: null },
-      });
-  return ok(res, { unread, emailEnabled: env.emailEnabled });
+  const inAppEnabled = !preference || preference.inAppEnabled;
+  const where = {
+    userId: req.user.userId,
+    restaurantId: req.user.restaurantId,
+    readAt: null,
+  };
+  const [unread, latest] = inAppEnabled
+    ? await Promise.all([
+        prisma.notification.count({ where }),
+        prisma.notification.findFirst({
+          where,
+          orderBy: { createdAt: 'desc' },
+        }),
+      ])
+    : [0, null];
+
+  return ok(res, { unread, latest, emailEnabled: env.emailEnabled });
 });
 
 router.get('/preferences', async (req, res) => {
@@ -92,23 +105,6 @@ router.patch('/preferences', async (req, res) => {
     update: parsed.data,
   });
   return ok(res, preference);
-});
-
-router.post('/test-email', async (req, res) => {
-  if (!req.user) return fail(res, 'Não autenticado.', 401);
-  if (!env.emailEnabled) return fail(res, 'Envio de e-mail não configurado.', 503);
-  try {
-    await sendAlertEmail({
-      to: req.user.email,
-      title: 'E-mail de alertas configurado',
-      message: 'Este é um teste do SafeKitchen Smart. Seus alertas por e-mail estão funcionando.',
-      link: '/notificacoes',
-      idempotencyKey: `test-${req.user.userId}-${Date.now()}`,
-    });
-    return ok(res, { sent: true });
-  } catch (error) {
-    return fail(res, error instanceof Error ? error.message : 'Falha no envio.', 502);
-  }
 });
 
 router.post('/read-all', async (req, res) => {

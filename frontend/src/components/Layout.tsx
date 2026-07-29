@@ -21,9 +21,15 @@ import {
   CreditCard,
   ShieldCheck,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { api, clearToken } from '../api/client';
+import type { AppNotification } from '../types';
+import {
+  getDeviceNotificationStatus,
+  notifyDevice,
+  primeNotificationSound,
+} from '../utils/deviceNotifications';
 import { ThemeToggle } from './ThemeToggle';
 
 const links = [
@@ -123,6 +129,7 @@ export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const previousUnreadRef = useRef<number | null>(null);
 
   function logout() {
     clearToken();
@@ -159,16 +166,45 @@ export function Layout() {
 
   useEffect(() => {
     let active = true;
-    const loadUnread = () => {
-      api<{ unread: number }>('/api/notifications/summary')
-        .then((data) => active && setUnreadNotifications(data.unread))
-        .catch(() => undefined);
+    const loadUnread = async () => {
+      try {
+        const data = await api<{
+          unread: number;
+          latest?: AppNotification | null;
+        }>('/api/notifications/summary');
+
+        if (!active) return;
+
+        const previousUnread = previousUnreadRef.current;
+        setUnreadNotifications(data.unread);
+        previousUnreadRef.current = data.unread;
+
+        if (
+          previousUnread !== null &&
+          data.unread > previousUnread &&
+          data.latest
+        ) {
+          await notifyDevice(data.latest);
+        }
+      } catch {
+        // O indicador será atualizado novamente no próximo ciclo.
+      }
     };
-    loadUnread();
-    const timer = window.setInterval(loadUnread, 60_000);
+
+    const unlockSound = () => {
+      if (getDeviceNotificationStatus() === 'enabled') {
+        primeNotificationSound();
+      }
+    };
+
+    document.addEventListener('pointerdown', unlockSound, { once: true });
+    void loadUnread();
+    const timer = window.setInterval(() => void loadUnread(), 60_000);
+
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener('pointerdown', unlockSound);
     };
   }, []);
 

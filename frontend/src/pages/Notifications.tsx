@@ -1,9 +1,15 @@
-import { AlertTriangle, Bell, CheckCheck, CircleAlert, Mail, RefreshCcw, Settings2 } from 'lucide-react';
+import { AlertTriangle, Bell, BellRing, CheckCheck, CircleAlert, Mail, RefreshCcw, Settings2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client';
 import type { AppNotification, NotificationPreference } from '../types';
+import {
+  disableDeviceNotifications,
+  enableDeviceNotifications,
+  getDeviceNotificationStatus,
+  type DeviceNotificationStatus,
+} from '../utils/deviceNotifications';
 
 const preferenceLabels: Array<[keyof NotificationPreference, string]> = [
   ['inAppEnabled', 'Alertas dentro do aplicativo'],
@@ -20,6 +26,9 @@ export function Notifications() {
   const [preferences, setPreferences] = useState<NotificationPreference | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [deviceStatus, setDeviceStatus] = useState<DeviceNotificationStatus>(
+    getDeviceNotificationStatus,
+  );
 
   async function load() {
     setLoading(true);
@@ -64,13 +73,23 @@ export function Notifications() {
     await load();
   }
 
-  async function testEmail() {
-    try {
-      await api('/api/notifications/test-email', { method: 'POST' });
-      setMessage('E-mail de teste enviado. Confira também a caixa de spam.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Falha no teste de e-mail.');
+  async function configureDeviceNotifications() {
+    const status = await enableDeviceNotifications();
+    setDeviceStatus(status);
+
+    if (status === 'enabled') {
+      setMessage('Notificações ativadas neste dispositivo.');
+    } else if (status === 'denied') {
+      setMessage('A permissão foi bloqueada. Libere as notificações nas configurações do navegador.');
+    } else if (status === 'unsupported') {
+      setMessage('Este navegador não oferece notificações para o SafeKitchen.');
     }
+  }
+
+  function turnOffDeviceNotifications() {
+    disableDeviceNotifications();
+    setDeviceStatus('disabled');
+    setMessage('Notificações desativadas neste dispositivo.');
   }
 
   return (
@@ -98,7 +117,42 @@ export function Notifications() {
         <aside className="h-fit rounded-[28px] border bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2"><Settings2 className="text-safe-green" /><h2 className="text-xl font-black">Preferências</h2></div>
           <div className="mt-5 space-y-3">{preferences && preferenceLabels.map(([key, label]) => <label key={key} className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3 text-sm font-bold"><span>{label}</span><input type="checkbox" checked={preferences[key]} onChange={(event) => updatePreference(key, event.target.checked)} className="h-5 w-5 accent-emerald-500" /></label>)}</div>
-          <button onClick={testEmail} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-dark px-4 py-3 text-sm font-black text-white"><Mail size={17} /> Enviar e-mail de teste</button>
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start gap-3">
+              <BellRing className="mt-0.5 shrink-0 text-safe-green" size={20} />
+              <div>
+                <p className="text-sm font-black text-safe-dark">Notificações deste dispositivo</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                  Receba um aviso visual e sonoro quando surgir um novo alerta enquanto o sistema estiver aberto.
+                </p>
+              </div>
+            </div>
+
+            {deviceStatus === 'enabled' ? (
+              <>
+                <div className="mt-4 rounded-xl bg-emerald-100 px-3 py-2 text-center text-xs font-black text-emerald-800">
+                  Notificações ativadas
+                </div>
+                <button
+                  type="button"
+                  onClick={turnOffDeviceNotifications}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-600"
+                >
+                  Desativar neste dispositivo
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={configureDeviceNotifications}
+                disabled={deviceStatus === 'unsupported'}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-safe-dark px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <BellRing size={17} />
+                Configurar notificações
+              </button>
+            )}
+          </div>
           <Link to="/assinatura" className="mt-3 block text-center text-xs font-bold text-safe-green">Ver plano e limites</Link>
         </aside>
       </section>
