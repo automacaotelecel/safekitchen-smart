@@ -42,7 +42,9 @@ const schema = z.object({
   CONTRACT_PROVIDER_EMAIL: z.string().email().or(z.literal('')).default(''),
   CONTRACT_CITY: z.string().default(''),
   CONTRACT_TERMS_VERSION: z.string().default('2026-07-25-v2'),
-  CONTRACT_IMPLEMENTATION_DAYS: z.coerce.number().int().min(1).max(180).default(15),
+  CONTRACT_IMPLEMENTATION_DAYS: z.coerce.number().int().min(1).max(180).optional(),
+  // Compatibilidade temporária com instalações anteriores à mudança de "entrega" para implantação.
+  CONTRACT_DELIVERY_DAYS: z.coerce.number().int().min(1).max(180).optional(),
   RESEND_API_KEY: z.string().default(''),
   EMAIL_FROM: z.string().default('SafeKitchen Smart <alertas@safekitchensmart.com.br>'),
   EMAIL_REPLY_TO: z.string().email().or(z.literal('')).default(''),
@@ -76,6 +78,9 @@ const storageEnabled = Boolean(
     parsed.data.S3_ACCESS_KEY_ID &&
     parsed.data.S3_SECRET_ACCESS_KEY
 );
+
+const contractImplementationDays =
+  parsed.data.CONTRACT_IMPLEMENTATION_DAYS ?? parsed.data.CONTRACT_DELIVERY_DAYS ?? 15;
 
 export const env = {
   nodeEnv: parsed.data.NODE_ENV,
@@ -114,7 +119,7 @@ export const env = {
   contractProviderEmail: parsed.data.CONTRACT_PROVIDER_EMAIL,
   contractCity: parsed.data.CONTRACT_CITY,
   contractTermsVersion: parsed.data.CONTRACT_TERMS_VERSION,
-  contractImplementationDays: parsed.data.CONTRACT_IMPLEMENTATION_DAYS,
+  contractImplementationDays,
   contractProviderConfigured: Boolean(
     parsed.data.CONTRACT_PROVIDER_NAME &&
       parsed.data.CONTRACT_PROVIDER_DOCUMENT &&

@@ -224,7 +224,13 @@ router.post('/', async (req, res) => {
     );
   }
 
-  const normalizedExtraData = parsed.data.extraData || {};
+  const normalizedExtraData = {
+    ...(parsed.data.extraData || {}),
+    ...(parsed.data.receivingTemperatureC !== null &&
+    parsed.data.receivingTemperatureC !== undefined
+      ? { receivingTemperatureC: parsed.data.receivingTemperatureC }
+      : {}),
+  };
 
   const label = await prisma.$transaction(async (tx) => {
     const createdLabel = await tx.label.create({

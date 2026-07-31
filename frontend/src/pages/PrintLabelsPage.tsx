@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Printer, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Bluetooth, Printer, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import type { Label, LabelExtraData, LabelType } from '../types';
+import {
+  getDirectPrintSupport,
+  printDirectToNiimbot,
+} from '../utils/niimbotDirectPrint';
 
 const labelTypeMap: Record<string, string> = {
   PRODUTO_ABERTO: 'Produto aberto',
@@ -121,6 +125,16 @@ function LabelCard({ label }: { label: Label }) {
             <Row label="Tipo" value={asText(extra.meatType)} />
             <Row label="MAPA/SIF" value={asText(extra.mapaSif)} />
             <Row label="Recebimento" value={brDate(asText(extra.receiptDate))} />
+            <Row
+              label="Temperatura"
+              value={
+                extra.receivingTemperatureC !== null &&
+                extra.receivingTemperatureC !== undefined &&
+                asText(extra.receivingTemperatureC) !== ''
+                  ? `${asText(extra.receivingTemperatureC)} °C`
+                  : undefined
+              }
+            />
             <Row label="Armazenamento" value={asText(extra.storageType)} />
           </>
         )}
@@ -178,6 +192,9 @@ export function PrintLabelsPage() {
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [directPrinting, setDirectPrinting] = useState(false);
+  const [printMessage, setPrintMessage] = useState('');
+  const directSupport = useMemo(() => getDirectPrintSupport(), []);
 
   useEffect(() => {
     async function loadLabels() {
@@ -221,15 +238,24 @@ export function PrintLabelsPage() {
     loadLabels();
   }, [printItems]);
 
-  useEffect(() => {
-    if (loading || error || labels.length === 0) return;
+  async function printOnB21() {
+    if (!labels.length || directPrinting) return;
 
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 650);
+    setDirectPrinting(true);
+    setError('');
+    setPrintMessage('');
 
-    return () => window.clearTimeout(timer);
-  }, [loading, error, labels.length]);
+    try {
+      await printDirectToNiimbot(labels, (progress) => {
+        setPrintMessage(progress.message);
+      });
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Erro ao imprimir diretamente na B21.');
+    } finally {
+      setDirectPrinting(false);
+    }
+  }
 
   return (
     <div className="print-page-screen">
@@ -242,14 +268,26 @@ export function PrintLabelsPage() {
           Voltar
         </Link>
 
+        {directSupport.supported && (
+          <button
+            type="button"
+            onClick={printOnB21}
+            disabled={loading || labels.length === 0 || directPrinting}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
+          >
+            <Bluetooth size={17} />
+            {directPrinting ? 'Enviando para B21…' : 'Imprimir direto na B21 (beta)'}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => window.print()}
-          disabled={loading || labels.length === 0}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
+          disabled={loading || labels.length === 0 || directPrinting}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-safe-dark shadow-sm disabled:opacity-50"
         >
           <Printer size={16} />
-          Imprimir agora
+          Imprimir pelo navegador
         </button>
 
         <button
@@ -263,14 +301,26 @@ export function PrintLabelsPage() {
       </div>
 
       <div className="no-print print-page-help">
-        <strong>Niimbot B21:</strong> conecte a impressora por USB e instale o software
-        oficial da Niimbot no Windows. Na janela de impressão, selecione a B21, use papel
-        50 × 30 mm, escala 100%, margens ausentes e desative cabeçalhos e rodapés. Se a
-        B21 não aparecer em Destino, ela ainda não está registrada como impressora do
-        Windows.
+        {directSupport.supported ? (
+          <>
+            <strong>Impressão Bluetooth direta:</strong> ligue a NIIMBOT B21, ative o
+            Bluetooth e feche o aplicativo NIIMBOT. Toque em “Imprimir direto na B21” e
+            selecione a impressora. Faça primeiro um teste com uma etiqueta; o navegador
+            sempre pedirá a confirmação do dispositivo por segurança.
+          </>
+        ) : (
+          <>
+            <strong>Bluetooth direto indisponível:</strong> {directSupport.reason} No
+            Windows, você também pode instalar o driver oficial e usar “Imprimir pelo
+            navegador” com papel 50 × 30 mm, escala 100% e sem margens.
+          </>
+        )}
       </div>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}
+      {printMessage && !error && (
+        <p className="no-print print-page-status">{printMessage}</p>
+      )}
       {error && <p className="no-print print-page-error">{error}</p>}
       {!loading && !error && labels.length === 0 && (
         <p className="no-print print-page-error">Nenhuma etiqueta selecionada para impressão.</p>

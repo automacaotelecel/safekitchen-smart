@@ -222,7 +222,7 @@ export function AiAssistant() {
 
         <div className={`mt-5 inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${health?.enabled ? 'bg-emerald-50 text-emerald-700' : checking ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>
           <span className={`h-2 w-2 rounded-full ${health?.enabled ? 'bg-emerald-500' : checking ? 'bg-slate-400' : 'bg-amber-500'}`} />
-          {checking ? 'Verificando disponibilidade' : health?.enabled ? 'Sana pronta para ajudar' : 'Sana temporariamente indisponível'}
+          {checking ? 'Verificando configuração' : health?.enabled ? 'Sana configurada' : 'Sana temporariamente indisponível'}
         </div>
       </section>
 

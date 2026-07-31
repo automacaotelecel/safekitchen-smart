@@ -18,8 +18,9 @@ function getSafeFileName(fileName?: string) {
 function isMobileDevice() {
   if (typeof navigator === 'undefined') return false;
 
-  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(
-    navigator.userAgent
+  return (
+    /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(navigator.userAgent) ||
+    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
   );
 }
 
@@ -156,7 +157,7 @@ export async function shareOrOpenPdfFromUrl(
     return {
       mode: 'opened' as const,
       message:
-        'PDF térmico 50 × 30 mm aberto. Use Ctrl+P ou importe o arquivo no aplicativo oficial Nimbot para a B21.',
+        'PDF térmico 50 × 30 mm aberto. Use Ctrl+P e selecione uma impressora instalada no sistema.',
     };
   }
 
@@ -184,9 +185,9 @@ export async function shareOrOpenPdfFromUrl(
   openBlobInNewTab(blob);
 
   return {
-    mode: 'opened' as const,
+      mode: 'opened' as const,
       message:
-        'PDF térmico 50 × 30 mm aberto. No celular, compartilhe o arquivo com o aplicativo oficial Nimbot para a B21.',
+        'PDF térmico 50 × 30 mm aberto. Use as opções de compartilhar, salvar ou imprimir do celular.',
   };
 }
 
@@ -225,7 +226,7 @@ export async function shareOrOpenPdfFromPost(
   return {
     mode: 'opened' as const,
     message:
-      'PDF térmico 50 × 30 mm aberto. Imprima pelo navegador ou importe no aplicativo oficial Nimbot.',
+      'PDF térmico 50 × 30 mm aberto. Imprima pelo navegador ou salve como arquivo de contingência.',
   };
 }
 
@@ -234,5 +235,5 @@ export function getMobilePrintHelpText() {
     return 'No computador, o PDF térmico 50 × 30 mm será aberto em uma nova aba para impressão.';
   }
 
-  return 'No celular, o sistema abre o compartilhamento quando possível. Para a Nimbot B21, compartilhe ou importe o PDF térmico no aplicativo oficial Nimbot.';
+  return 'No celular, use “Imprimir agora” para acessar o Bluetooth direto quando disponível. O PDF térmico é a alternativa para navegadores incompatíveis.';
 }

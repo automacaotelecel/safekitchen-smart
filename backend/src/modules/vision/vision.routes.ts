@@ -656,7 +656,7 @@ router.get('/health', (_req, res) => {
     enabled: Boolean(env.geminiApiKey),
     model: env.geminiModel,
     message: env.geminiApiKey
-      ? 'Sana configurada e pronta para ajudar.'
+      ? 'Credencial da Sana configurada. A disponibilidade do provedor é validada em cada análise.'
       : 'Sana indisponível: GEMINI_API_KEY não configurada no servidor.',
   });
 });

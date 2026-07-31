@@ -272,8 +272,8 @@ export function PrintQueue() {
             </h1>
 
             <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
-              Selecione etiquetas, defina a quantidade de cópias e use o botão
-              compartilhar/imprimir para enviar pelo celular ou abrir no computador.
+              Selecione etiquetas, defina as cópias e abra a tela de impressão. Em
+              navegadores compatíveis, ela conecta diretamente à NIIMBOT B21 por Bluetooth.
             </p>
           </div>
 
@@ -312,9 +312,9 @@ export function PrintQueue() {
         <div className="mt-4 rounded-2xl bg-safe-soft px-4 py-3 text-xs font-bold leading-5 text-safe-dark">
           <p>{getMobilePrintHelpText()}</p>
           <p className="mt-1">
-            Perfil homologado: <strong>Nimbot B21 • etiqueta 50 × 30 mm</strong>.
-            O PDF é gerado no tamanho térmico real e pode ser importado no aplicativo
-            oficial da Nimbot.
+            Perfil preparado para <strong>NIIMBOT B21 • etiqueta 50 × 30 mm</strong>.
+            O PDF térmico continua disponível como contingência quando o Bluetooth direto
+            não for oferecido pelo aparelho.
           </p>
         </div>
 

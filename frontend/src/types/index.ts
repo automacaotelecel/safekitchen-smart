@@ -94,6 +94,7 @@ export type LabelExtraData = {
   meatType?: string;
   mapaSif?: string;
   receiptDate?: string;
+  receivingTemperatureC?: number | string;
   storageType?: string;
 
   repackagingDate?: string;

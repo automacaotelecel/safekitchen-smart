@@ -132,6 +132,7 @@ function collectExtraRows(label: LabelLike) {
   push('Tipo de carne', 'meatType');
   push('MAPA/SIF', 'mapaSif');
   push('Data recebimento', 'receiptDate');
+  push('Temperatura receb.', 'receivingTemperatureC');
   push('Armazenamento', 'storageType');
 
   push('Data reembalagem', 'repackagingDate');
@@ -311,6 +312,8 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
   const margin = 5;
   const contentWidth = B21_LABEL_WIDTH - margin * 2;
   const canceled = label.status === 'CANCELADA';
+  const extra = normalizeExtraData(label.extraData);
+  const receivingTemperature = asText(extra.receivingTemperatureC).trim();
 
   doc
     .rect(0, 0, B21_LABEL_WIDTH, B21_LABEL_HEIGHT)
@@ -387,8 +390,16 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
   compactRow('Conservação', conservationName(label.conservationMode), rightX, 49);
   compactRow('Lote', label.batch || '—', leftX, 62);
   compactRow(
-    label.quantity ? 'Quantidade' : label.brand ? 'Marca' : 'Fornecedor',
-    label.quantity || label.brand || label.supplier || '—',
+    label.type === 'ARMAZENAMENTO_CARNES' && receivingTemperature
+      ? 'Temperatura'
+      : label.quantity
+        ? 'Quantidade'
+        : label.brand
+          ? 'Marca'
+          : 'Fornecedor',
+    label.type === 'ARMAZENAMENTO_CARNES' && receivingTemperature
+      ? `${receivingTemperature} °C`
+      : label.quantity || label.brand || label.supplier || '—',
     rightX,
     62
   );

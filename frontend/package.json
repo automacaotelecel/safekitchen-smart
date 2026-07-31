@@ -12,6 +12,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@mmote/niimbluelib": "0.0.1-alpha.41",
     "@vitejs/plugin-react": "^6.0.3",
     "@zxing/browser": "^0.1.5",
     "date-fns": "^4.1.0",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
+    "@types/web-bluetooth": "0.0.21",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16"

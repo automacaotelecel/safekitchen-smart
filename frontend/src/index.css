@@ -590,6 +590,8 @@ html.dark aside:not(.app-content aside) {
     box-sizing: border-box;
     break-inside: avoid;
     page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
     overflow: hidden !important;
     font-family: Arial, sans-serif !important;
     font-size: 7px !important;
@@ -597,9 +599,9 @@ html.dark aside:not(.app-content aside) {
     color: black !important;
   }
 
-  .print-label-card + .print-label-card {
-    break-before: page;
-    page-break-before: always;
+  .print-label-card:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   .print-label-body {
