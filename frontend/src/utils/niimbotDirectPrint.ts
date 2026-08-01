@@ -2,6 +2,7 @@ import {
   ImageEncoder,
   LabelType as NiimbotLabelType,
   NiimbotBluetoothClient,
+  PacketGenerator,
   PrinterModel,
   type PrinterModelMeta,
 } from '@mmote/niimbluelib';
@@ -310,6 +311,7 @@ export async function printDirectToNiimbot(
 
   const printer = client();
   let printTask: ReturnType<typeof printer.abstraction.newPrintTask> | null = null;
+  let b21PrintStarted = false;
   let finished = false;
   directPrintInProgress = true;
 
@@ -342,10 +344,9 @@ export async function printDirectToNiimbot(
     // Alguns firmwares B21 mantêm a última quantidade usada pela impressora.
     // O perfil B21_V1 da biblioteca não transmite a quantidade, o que pode
     // fazer uma solicitação de 1 etiqueta repetir a quantidade anterior.
-    // O perfil compatível abaixo preserva o tamanho de página da B21, limpa o
-    // buffer e envia PrintQuantity(1) para cada etiqueta.
+    // Mantemos exatamente a codificação de imagem da B21_V1 e acrescentamos
+    // somente PrintQuantity(1) depois do tamanho de cada página.
     const useSingleCopyB21Profile = detectedTaskName === 'B21_V1';
-    const taskName = useSingleCopyB21Profile ? 'D110' : detectedTaskName;
 
     onProgress?.({
       stage: 'preparing',
@@ -353,15 +354,24 @@ export async function printDirectToNiimbot(
       total: labels.length,
     });
 
-    printTask = printer.abstraction.newPrintTask(taskName, {
-      totalPages: labels.length,
-      density: metadata.densityDefault,
-      labelType: NiimbotLabelType.WithGaps,
-      statusTimeoutMs: Math.max(15_000, labels.length * 5_000),
-      pageTimeoutMs: 15_000,
-    });
+    if (useSingleCopyB21Profile) {
+      await printer.abstraction.sendAll([
+        PacketGenerator.setDensity(metadata.densityDefault),
+        PacketGenerator.setLabelType(NiimbotLabelType.WithGaps),
+        PacketGenerator.printStart1b(),
+      ]);
+      b21PrintStarted = true;
+    } else {
+      printTask = printer.abstraction.newPrintTask(detectedTaskName, {
+        totalPages: labels.length,
+        density: metadata.densityDefault,
+        labelType: NiimbotLabelType.WithGaps,
+        statusTimeoutMs: Math.max(15_000, labels.length * 5_000),
+        pageTimeoutMs: 15_000,
+      });
 
-    await printTask.printInit();
+      await printTask.printInit();
+    }
 
     for (let index = 0; index < labels.length; index += 1) {
       onProgress?.({
@@ -374,9 +384,23 @@ export async function printDirectToNiimbot(
       const canvas = renderLabelCanvas(labels[index], metadata);
       const image = ImageEncoder.encodeCanvas(canvas, metadata.printDirection);
 
-      await printTask.printPage(image, 1);
-
-      if (!useSingleCopyB21Profile) {
+      if (useSingleCopyB21Profile) {
+        await printer.abstraction.sendAll(
+          [
+            PacketGenerator.pageStart(),
+            PacketGenerator.setPageSize4b(image.rows, image.cols),
+            PacketGenerator.setPrintQuantity(1),
+            ...PacketGenerator.writeImageData(image, {
+              countsMode: 'total',
+              enableCheckLine: true,
+              printheadPixels: metadata.printheadPixels,
+            }),
+            PacketGenerator.pageEnd(),
+          ],
+          15_000
+        );
+      } else if (printTask) {
+        await printTask.printPage(image, 1);
         await printTask.waitForPageFinished();
       }
     }
@@ -392,7 +416,7 @@ export async function printDirectToNiimbot(
       // A B21 confirma a conclusão aceitando PrintEnd. Esse é o mesmo método
       // de finalização do perfil B21_V1 original.
       await printer.abstraction.waitUntilPrintFinishedByPrintEndPoll(labels.length, 300);
-    } else {
+    } else if (printTask) {
       await printTask.waitForFinished();
       await printTask.printEnd();
     }
@@ -414,7 +438,9 @@ export async function printDirectToNiimbot(
 
     return result;
   } catch (error) {
-    if (printTask && !finished) {
+    if (b21PrintStarted && !finished) {
+      await printer.abstraction.printEnd().catch(() => undefined);
+    } else if (printTask && !finished) {
       await printTask.printEnd().catch(() => undefined);
     }
     throw directPrintError(error);
