@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Bluetooth, Printer, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -194,6 +194,7 @@ export function PrintLabelsPage() {
   const [error, setError] = useState('');
   const [directPrinting, setDirectPrinting] = useState(false);
   const [printMessage, setPrintMessage] = useState('');
+  const printClickLock = useRef(false);
   const directSupport = useMemo(() => getDirectPrintSupport(), []);
 
   useEffect(() => {
@@ -239,8 +240,9 @@ export function PrintLabelsPage() {
   }, [printItems]);
 
   async function printOnB21() {
-    if (!labels.length || directPrinting) return;
+    if (!labels.length || directPrinting || printClickLock.current) return;
 
+    printClickLock.current = true;
     setDirectPrinting(true);
     setError('');
     setPrintMessage('');
@@ -253,6 +255,7 @@ export function PrintLabelsPage() {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Erro ao imprimir diretamente na B21.');
     } finally {
+      printClickLock.current = false;
       setDirectPrinting(false);
     }
   }
@@ -276,7 +279,9 @@ export function PrintLabelsPage() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
           >
             <Bluetooth size={17} />
-            {directPrinting ? 'Enviando para B21…' : 'Imprimir direto na B21 (beta)'}
+            {directPrinting
+              ? 'Enviando para B21…'
+              : `Imprimir ${labels.length} ${labels.length === 1 ? 'etiqueta' : 'etiquetas'} na B21`}
           </button>
         )}
 
@@ -287,7 +292,7 @@ export function PrintLabelsPage() {
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-safe-dark shadow-sm disabled:opacity-50"
         >
           <Printer size={16} />
-          Imprimir pelo navegador
+          Imprimir {labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'} pelo navegador
         </button>
 
         <button
@@ -318,6 +323,11 @@ export function PrintLabelsPage() {
       </div>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}
+      {!loading && !error && labels.length > 0 && !directPrinting && (
+        <p className="no-print print-page-status">
+          Quantidade confirmada: {labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'}.
+        </p>
+      )}
       {printMessage && !error && (
         <p className="no-print print-page-status">{printMessage}</p>
       )}

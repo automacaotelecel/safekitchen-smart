@@ -39,6 +39,7 @@ const B21_MODELS = new Set<PrinterModel>([
 
 const MAX_DIRECT_PAGES = 100;
 let bluetoothClient: NiimbotBluetoothClient | null = null;
+let directPrintInProgress = false;
 
 function client() {
   bluetoothClient ??= new NiimbotBluetoothClient();
@@ -303,10 +304,14 @@ export async function printDirectToNiimbot(
   if (labels.length > MAX_DIRECT_PAGES) {
     throw new Error(`Imprima no máximo ${MAX_DIRECT_PAGES} etiquetas por lote Bluetooth.`);
   }
+  if (directPrintInProgress) {
+    throw new Error('Já existe uma impressão em andamento. Aguarde a B21 concluir.');
+  }
 
   const printer = client();
   let printTask: ReturnType<typeof printer.abstraction.newPrintTask> | null = null;
   let finished = false;
+  directPrintInProgress = true;
 
   try {
     onProgress?.({
@@ -329,10 +334,18 @@ export async function printDirectToNiimbot(
       throw new Error(`Impressora ${detected} detectada. Este perfil foi validado para a família B21.`);
     }
 
-    const taskName = printer.getPrintTaskType();
-    if (!taskName) {
+    const detectedTaskName = printer.getPrintTaskType();
+    if (!detectedTaskName) {
       throw new Error(`O protocolo da ${metadata.model} não foi reconhecido.`);
     }
+
+    // Alguns firmwares B21 mantêm a última quantidade usada pela impressora.
+    // O perfil B21_V1 da biblioteca não transmite a quantidade, o que pode
+    // fazer uma solicitação de 1 etiqueta repetir a quantidade anterior.
+    // O perfil compatível abaixo preserva o tamanho de página da B21, limpa o
+    // buffer e envia PrintQuantity(1) para cada etiqueta.
+    const useSingleCopyB21Profile = detectedTaskName === 'B21_V1';
+    const taskName = useSingleCopyB21Profile ? 'D110' : detectedTaskName;
 
     onProgress?.({
       stage: 'preparing',
@@ -360,8 +373,12 @@ export async function printDirectToNiimbot(
 
       const canvas = renderLabelCanvas(labels[index], metadata);
       const image = ImageEncoder.encodeCanvas(canvas, metadata.printDirection);
+
       await printTask.printPage(image, 1);
-      await printTask.waitForPageFinished();
+
+      if (!useSingleCopyB21Profile) {
+        await printTask.waitForPageFinished();
+      }
     }
 
     onProgress?.({
@@ -371,7 +388,15 @@ export async function printDirectToNiimbot(
       total: labels.length,
     });
 
-    await printTask.waitForFinished();
+    if (useSingleCopyB21Profile) {
+      // A B21 confirma a conclusão aceitando PrintEnd. Esse é o mesmo método
+      // de finalização do perfil B21_V1 original.
+      await printer.abstraction.waitUntilPrintFinishedByPrintEndPoll(labels.length, 300);
+    } else {
+      await printTask.waitForFinished();
+      await printTask.printEnd();
+    }
+
     finished = true;
 
     const result = {
@@ -392,8 +417,10 @@ export async function printDirectToNiimbot(
     if (printTask && !finished) {
       await printTask.printEnd().catch(() => undefined);
     }
-    await printer.disconnect().catch(() => undefined);
     throw directPrintError(error);
+  } finally {
+    await printer.disconnect().catch(() => undefined);
+    directPrintInProgress = false;
   }
 }
 

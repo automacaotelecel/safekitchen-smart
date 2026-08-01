@@ -122,6 +122,7 @@ export function PrintQueue() {
   }, [items, search]);
 
   const selectedIds = selected.map((item) => item.id);
+  const totalCopies = selected.reduce((sum, item) => sum + item.copies, 0);
 
   const allVisibleSelected =
     filteredItems.length > 0 && filteredItems.every((item) => selectedIds.includes(item.id));
@@ -294,7 +295,7 @@ export function PrintQueue() {
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Printer size={16} />
-              {`Imprimir agora (${selected.length})`}
+              {`Imprimir agora (${totalCopies} ${totalCopies === 1 ? 'cópia' : 'cópias'})`}
             </button>
 
             <button
