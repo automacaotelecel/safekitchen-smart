@@ -2,7 +2,6 @@ import {
   ImageEncoder,
   LabelType as NiimbotLabelType,
   NiimbotBluetoothClient,
-  PacketGenerator,
   PrinterModel,
   type PrinterModelMeta,
 } from '@mmote/niimbluelib';
@@ -309,9 +308,11 @@ export async function printDirectToNiimbot(
     throw new Error('Já existe uma impressão em andamento. Aguarde a B21 concluir.');
   }
 
+  // Mantém uma fila imutável durante todo o trabalho. Alterações de estado da
+  // tela não conseguem acrescentar páginas depois que o usuário toca em imprimir.
+  const printQueue = [...labels];
   const printer = client();
   let printTask: ReturnType<typeof printer.abstraction.newPrintTask> | null = null;
-  let b21PrintStarted = false;
   let finished = false;
   directPrintInProgress = true;
 
@@ -341,83 +342,52 @@ export async function printDirectToNiimbot(
       throw new Error(`O protocolo da ${metadata.model} não foi reconhecido.`);
     }
 
-    // Alguns firmwares B21 mantêm a última quantidade usada pela impressora.
-    // O perfil B21_V1 da biblioteca não transmite a quantidade, o que pode
-    // fazer uma solicitação de 1 etiqueta repetir a quantidade anterior.
-    // Mantemos exatamente a codificação de imagem da B21_V1 e acrescentamos
-    // somente PrintQuantity(1) depois do tamanho de cada página.
-    const useSingleCopyB21Profile = detectedTaskName === 'B21_V1';
-
     onProgress?.({
       stage: 'preparing',
-      message: `Preparando ${labels.length} etiqueta(s) para ${metadata.model}…`,
-      total: labels.length,
+      message: `Preparando ${printQueue.length} etiqueta(s) para ${metadata.model}…`,
+      total: printQueue.length,
     });
 
-    if (useSingleCopyB21Profile) {
-      await printer.abstraction.sendAll([
-        PacketGenerator.setDensity(metadata.densityDefault),
-        PacketGenerator.setLabelType(NiimbotLabelType.WithGaps),
-        PacketGenerator.printStart1b(),
-      ]);
-      b21PrintStarted = true;
-    } else {
-      printTask = printer.abstraction.newPrintTask(detectedTaskName, {
-        totalPages: labels.length,
-        density: metadata.densityDefault,
-        labelType: NiimbotLabelType.WithGaps,
-        statusTimeoutMs: Math.max(15_000, labels.length * 5_000),
-        pageTimeoutMs: 15_000,
-      });
+    // Usa integralmente o protocolo detectado pela própria biblioteca. Em
+    // especial, B21_V1 preserva a codificação que esta impressora já confirmou
+    // conseguir imprimir, sem inserir comandos de quantidade incompatíveis.
+    printTask = printer.abstraction.newPrintTask(detectedTaskName, {
+      totalPages: printQueue.length,
+      density: metadata.densityDefault,
+      labelType: NiimbotLabelType.WithGaps,
+      statusTimeoutMs: Math.max(15_000, printQueue.length * 5_000),
+      pageTimeoutMs: 15_000,
+    });
 
-      await printTask.printInit();
-    }
+    await printTask.printInit();
 
-    for (let index = 0; index < labels.length; index += 1) {
+    for (let index = 0; index < printQueue.length; index += 1) {
       onProgress?.({
         stage: 'printing',
-        message: `Enviando etiqueta ${index + 1} de ${labels.length}…`,
+        message: `Enviando etiqueta ${index + 1} de ${printQueue.length}…`,
         current: index + 1,
-        total: labels.length,
+        total: printQueue.length,
       });
 
-      const canvas = renderLabelCanvas(labels[index], metadata);
+      const canvas = renderLabelCanvas(printQueue[index], metadata);
       const image = ImageEncoder.encodeCanvas(canvas, metadata.printDirection);
 
-      if (useSingleCopyB21Profile) {
-        await printer.abstraction.sendAll(
-          [
-            PacketGenerator.pageStart(),
-            PacketGenerator.setPageSize4b(image.rows, image.cols),
-            PacketGenerator.setPrintQuantity(1),
-            ...PacketGenerator.writeImageData(image, {
-              countsMode: 'total',
-              enableCheckLine: true,
-              printheadPixels: metadata.printheadPixels,
-            }),
-            PacketGenerator.pageEnd(),
-          ],
-          15_000
-        );
-      } else if (printTask) {
-        await printTask.printPage(image, 1);
-        await printTask.waitForPageFinished();
-      }
+      await printTask.printPage(image, 1);
+      await printTask.waitForPageFinished();
     }
 
     onProgress?.({
       stage: 'finishing',
       message: 'Aguardando a B21 concluir a impressão…',
-      current: labels.length,
-      total: labels.length,
+      current: printQueue.length,
+      total: printQueue.length,
     });
 
-    if (useSingleCopyB21Profile) {
-      // A B21 confirma a conclusão aceitando PrintEnd. Esse é o mesmo método
-      // de finalização do perfil B21_V1 original.
-      await printer.abstraction.waitUntilPrintFinishedByPrintEndPoll(labels.length, 300);
-    } else if (printTask) {
-      await printTask.waitForFinished();
+    await printTask.waitForFinished();
+
+    // B21_V1 finaliza durante waitForFinished. Os demais protocolos precisam
+    // do comando de encerramento explícito após concluírem suas páginas.
+    if (detectedTaskName !== 'B21_V1') {
       await printTask.printEnd();
     }
 
@@ -426,21 +396,19 @@ export async function printDirectToNiimbot(
     const result = {
       deviceName: connection.deviceName || metadata.model,
       model: metadata.model,
-      pages: labels.length,
+      pages: printQueue.length,
     };
 
     onProgress?.({
       stage: 'done',
-      message: `${labels.length} etiqueta(s) enviada(s) para ${result.deviceName}.`,
-      current: labels.length,
-      total: labels.length,
+      message: `${printQueue.length} etiqueta(s) enviada(s) para ${result.deviceName}.`,
+      current: printQueue.length,
+      total: printQueue.length,
     });
 
     return result;
   } catch (error) {
-    if (b21PrintStarted && !finished) {
-      await printer.abstraction.printEnd().catch(() => undefined);
-    } else if (printTask && !finished) {
+    if (printTask && !finished) {
       await printTask.printEnd().catch(() => undefined);
     }
     throw directPrintError(error);
