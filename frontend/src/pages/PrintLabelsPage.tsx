@@ -193,8 +193,9 @@ export function PrintLabelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [directPrinting, setDirectPrinting] = useState(false);
+  const [directPrintCompleted, setDirectPrintCompleted] = useState(false);
   const [printMessage, setPrintMessage] = useState('');
-  const printClickLock = useRef(false);
+  const directPrintLock = useRef(false);
   const directSupport = useMemo(() => getDirectPrintSupport(), []);
 
   useEffect(() => {
@@ -240,22 +241,38 @@ export function PrintLabelsPage() {
   }, [printItems]);
 
   async function printOnB21() {
-    if (!labels.length || directPrinting || printClickLock.current) return;
+    if (
+      !labels.length ||
+      directPrinting ||
+      directPrintCompleted ||
+      directPrintLock.current
+    ) {
+      return;
+    }
 
-    printClickLock.current = true;
+    // A impressão Bluetooth da B21 é deliberadamente unitária. Mesmo que a
+    // tela tenha várias etiquetas/cópias carregadas, somente a primeira é
+    // enviada. Isso preserva o protocolo que já imprimiu a imagem corretamente
+    // e impede que estado da fila transforme um clique em várias páginas.
+    const singleLabel = labels[0];
+    directPrintLock.current = true;
     setDirectPrinting(true);
     setError('');
     setPrintMessage('');
 
     try {
-      await printDirectToNiimbot(labels, (progress) => {
+      await printDirectToNiimbot([singleLabel], (progress) => {
         setPrintMessage(progress.message);
       });
+      setDirectPrintCompleted(true);
+      setPrintMessage(
+        'Uma etiqueta foi enviada. Para imprimir outra, volte à fila e abra uma nova impressão.'
+      );
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Erro ao imprimir diretamente na B21.');
+      directPrintLock.current = false;
     } finally {
-      printClickLock.current = false;
       setDirectPrinting(false);
     }
   }
@@ -275,13 +292,20 @@ export function PrintLabelsPage() {
           <button
             type="button"
             onClick={printOnB21}
-            disabled={loading || labels.length === 0 || directPrinting}
+            disabled={
+              loading ||
+              labels.length === 0 ||
+              directPrinting ||
+              directPrintCompleted
+            }
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
           >
             <Bluetooth size={17} />
             {directPrinting
-              ? 'Enviando para B21…'
-              : `Imprimir ${labels.length} ${labels.length === 1 ? 'etiqueta' : 'etiquetas'} na B21`}
+              ? 'Enviando 1 etiqueta para B21…'
+              : directPrintCompleted
+                ? 'Etiqueta enviada — volte para imprimir outra'
+                : 'Imprimir 1 etiqueta na B21'}
           </button>
         )}
 
@@ -292,7 +316,7 @@ export function PrintLabelsPage() {
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-safe-dark shadow-sm disabled:opacity-50"
         >
           <Printer size={16} />
-          Imprimir {labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'} pelo navegador
+          Imprimir pelo navegador
         </button>
 
         <button
@@ -309,9 +333,10 @@ export function PrintLabelsPage() {
         {directSupport.supported ? (
           <>
             <strong>Impressão Bluetooth direta:</strong> ligue a NIIMBOT B21, ative o
-            Bluetooth e feche o aplicativo NIIMBOT. Toque em “Imprimir direto na B21” e
-            selecione a impressora. Faça primeiro um teste com uma etiqueta; o navegador
-            sempre pedirá a confirmação do dispositivo por segurança.
+            Bluetooth e feche o aplicativo NIIMBOT. O botão Bluetooth sempre envia somente
+            uma etiqueta e fica bloqueado depois do primeiro envio. Para imprimir outra,
+            volte à fila e abra uma nova impressão. O botão “Imprimir pelo navegador”
+            continua usando todas as etiquetas e cópias selecionadas.
           </>
         ) : (
           <>
@@ -323,11 +348,6 @@ export function PrintLabelsPage() {
       </div>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}
-      {!loading && !error && labels.length > 0 && !directPrinting && (
-        <p className="no-print print-page-status">
-          Quantidade confirmada: {labels.length} {labels.length === 1 ? 'etiqueta' : 'etiquetas'}.
-        </p>
-      )}
       {printMessage && !error && (
         <p className="no-print print-page-status">{printMessage}</p>
       )}

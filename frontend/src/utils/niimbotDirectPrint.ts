@@ -39,7 +39,6 @@ const B21_MODELS = new Set<PrinterModel>([
 
 const MAX_DIRECT_PAGES = 100;
 let bluetoothClient: NiimbotBluetoothClient | null = null;
-let directPrintInProgress = false;
 
 function client() {
   bluetoothClient ??= new NiimbotBluetoothClient();
@@ -304,17 +303,10 @@ export async function printDirectToNiimbot(
   if (labels.length > MAX_DIRECT_PAGES) {
     throw new Error(`Imprima no máximo ${MAX_DIRECT_PAGES} etiquetas por lote Bluetooth.`);
   }
-  if (directPrintInProgress) {
-    throw new Error('Já existe uma impressão em andamento. Aguarde a B21 concluir.');
-  }
 
-  // Mantém uma fila imutável durante todo o trabalho. Alterações de estado da
-  // tela não conseguem acrescentar páginas depois que o usuário toca em imprimir.
-  const printQueue = [...labels];
   const printer = client();
   let printTask: ReturnType<typeof printer.abstraction.newPrintTask> | null = null;
   let finished = false;
-  directPrintInProgress = true;
 
   try {
     onProgress?.({
@@ -337,41 +329,37 @@ export async function printDirectToNiimbot(
       throw new Error(`Impressora ${detected} detectada. Este perfil foi validado para a família B21.`);
     }
 
-    const detectedTaskName = printer.getPrintTaskType();
-    if (!detectedTaskName) {
+    const taskName = printer.getPrintTaskType();
+    if (!taskName) {
       throw new Error(`O protocolo da ${metadata.model} não foi reconhecido.`);
     }
 
     onProgress?.({
       stage: 'preparing',
-      message: `Preparando ${printQueue.length} etiqueta(s) para ${metadata.model}…`,
-      total: printQueue.length,
+      message: `Preparando ${labels.length} etiqueta(s) para ${metadata.model}…`,
+      total: labels.length,
     });
 
-    // Usa integralmente o protocolo detectado pela própria biblioteca. Em
-    // especial, B21_V1 preserva a codificação que esta impressora já confirmou
-    // conseguir imprimir, sem inserir comandos de quantidade incompatíveis.
-    printTask = printer.abstraction.newPrintTask(detectedTaskName, {
-      totalPages: printQueue.length,
+    printTask = printer.abstraction.newPrintTask(taskName, {
+      totalPages: labels.length,
       density: metadata.densityDefault,
       labelType: NiimbotLabelType.WithGaps,
-      statusTimeoutMs: Math.max(15_000, printQueue.length * 5_000),
+      statusTimeoutMs: Math.max(15_000, labels.length * 5_000),
       pageTimeoutMs: 15_000,
     });
 
     await printTask.printInit();
 
-    for (let index = 0; index < printQueue.length; index += 1) {
+    for (let index = 0; index < labels.length; index += 1) {
       onProgress?.({
         stage: 'printing',
-        message: `Enviando etiqueta ${index + 1} de ${printQueue.length}…`,
+        message: `Enviando etiqueta ${index + 1} de ${labels.length}…`,
         current: index + 1,
-        total: printQueue.length,
+        total: labels.length,
       });
 
-      const canvas = renderLabelCanvas(printQueue[index], metadata);
+      const canvas = renderLabelCanvas(labels[index], metadata);
       const image = ImageEncoder.encodeCanvas(canvas, metadata.printDirection);
-
       await printTask.printPage(image, 1);
       await printTask.waitForPageFinished();
     }
@@ -379,31 +367,24 @@ export async function printDirectToNiimbot(
     onProgress?.({
       stage: 'finishing',
       message: 'Aguardando a B21 concluir a impressão…',
-      current: printQueue.length,
-      total: printQueue.length,
+      current: labels.length,
+      total: labels.length,
     });
 
     await printTask.waitForFinished();
-
-    // B21_V1 finaliza durante waitForFinished. Os demais protocolos precisam
-    // do comando de encerramento explícito após concluírem suas páginas.
-    if (detectedTaskName !== 'B21_V1') {
-      await printTask.printEnd();
-    }
-
     finished = true;
 
     const result = {
       deviceName: connection.deviceName || metadata.model,
       model: metadata.model,
-      pages: printQueue.length,
+      pages: labels.length,
     };
 
     onProgress?.({
       stage: 'done',
-      message: `${printQueue.length} etiqueta(s) enviada(s) para ${result.deviceName}.`,
-      current: printQueue.length,
-      total: printQueue.length,
+      message: `${labels.length} etiqueta(s) enviada(s) para ${result.deviceName}.`,
+      current: labels.length,
+      total: labels.length,
     });
 
     return result;
@@ -411,10 +392,8 @@ export async function printDirectToNiimbot(
     if (printTask && !finished) {
       await printTask.printEnd().catch(() => undefined);
     }
-    throw directPrintError(error);
-  } finally {
     await printer.disconnect().catch(() => undefined);
-    directPrintInProgress = false;
+    throw directPrintError(error);
   }
 }
 
