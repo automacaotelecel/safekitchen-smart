@@ -17,7 +17,12 @@ import {
 } from 'lucide-react';
 
 import { api } from '../api/client';
-import type { ConservationMode, Product, VisionIdentifyResponse } from '../types';
+import type {
+  ConservationMode,
+  Product,
+  ValiditySuggestionResponse,
+  VisionIdentifyResponse,
+} from '../types';
 
 type ProductForm = {
   name: string;
@@ -25,6 +30,10 @@ type ProductForm = {
   defaultMode: ConservationMode;
   keywords: string;
   imageUrl: string;
+  validityValue: string;
+  validityUnit: 'days' | 'hours';
+  validityDescription: string;
+  validitySource: string;
 };
 
 const emptyForm: ProductForm = {
@@ -33,7 +42,26 @@ const emptyForm: ProductForm = {
   defaultMode: 'REFRIGERADO',
   keywords: '',
   imageUrl: '',
+  validityValue: '',
+  validityUnit: 'days',
+  validityDescription: '',
+  validitySource: '',
 };
+
+function validityRulePayload(form: ProductForm) {
+  const value = Number(form.validityValue);
+
+  if (!Number.isInteger(value) || value <= 0) return null;
+
+  return {
+    validityValue: value,
+    validityUnit: form.validityUnit,
+    description:
+      form.validityDescription.trim() ||
+      `${form.name.trim()} - ${form.defaultMode.toLowerCase()}`,
+    source: form.validitySource.trim() || 'Critério cadastrado pelo estabelecimento',
+  };
+}
 
 function mergeKeywords(...values: Array<string | undefined | null>) {
   const words = values
@@ -97,6 +125,7 @@ export function Products() {
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<'create' | 'edit' | null>(null);
+  const [validityLoading, setValidityLoading] = useState<'create' | 'edit' | null>(null);
   const [aiResult, setAiResult] = useState<VisionIdentifyResponse | null>(null);
   const [editAiResult, setEditAiResult] = useState<VisionIdentifyResponse | null>(null);
 
@@ -117,6 +146,14 @@ export function Products() {
       return text.includes(q);
     });
   }, [products, search]);
+
+  const categoryOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(products.map((product) => product.category.trim()).filter(Boolean))
+      ).sort((left, right) => left.localeCompare(right, 'pt-BR')),
+    [products]
+  );
 
   const activeCount = products.filter((item) => item.active).length;
   const inactiveCount = products.filter((item) => !item.active).length;
@@ -216,6 +253,46 @@ export function Products() {
     }
   }
 
+  async function suggestValidity(target: 'create' | 'edit') {
+    resetMessages();
+
+    const current = target === 'create' ? form : editForm;
+    if (current.name.trim().length < 2 || current.category.trim().length < 2) {
+      setError('Informe o nome e a categoria antes de pedir a sugestão de validade.');
+      return;
+    }
+
+    setValidityLoading(target);
+
+    try {
+      const suggestion = await api<ValiditySuggestionResponse>('/api/vision/suggest-validity', {
+        method: 'POST',
+        body: JSON.stringify({
+          productName: current.name,
+          category: current.category,
+          conservationMode: current.defaultMode,
+        }),
+      });
+
+      const update = (old: ProductForm): ProductForm => ({
+        ...old,
+        validityValue: String(suggestion.validityValue),
+        validityUnit: suggestion.validityUnit,
+        validityDescription: suggestion.description,
+        validitySource: suggestion.source,
+      });
+
+      if (target === 'create') setForm(update);
+      else setEditForm(update);
+
+      setSuccess(`${suggestion.warning} Confira e ajuste o critério antes de salvar.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'A Sana não conseguiu sugerir a validade.');
+    } finally {
+      setValidityLoading(null);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
 
@@ -231,6 +308,7 @@ export function Products() {
           defaultMode: form.defaultMode,
           keywords: form.keywords,
           imageUrl: form.imageUrl || null,
+          validityRule: validityRulePayload(form),
         }),
       });
 
@@ -256,6 +334,19 @@ export function Products() {
       defaultMode: product.defaultMode || 'REFRIGERADO',
       keywords: product.keywords || '',
       imageUrl: product.imageUrl || '',
+      validityValue: String(
+        product.validityRules.find((rule) => rule.conservationMode === product.defaultMode)
+          ?.validityValue || product.validityRules[0]?.validityValue || ''
+      ),
+      validityUnit:
+        product.validityRules.find((rule) => rule.conservationMode === product.defaultMode)
+          ?.validityUnit || product.validityRules[0]?.validityUnit || 'days',
+      validityDescription:
+        product.validityRules.find((rule) => rule.conservationMode === product.defaultMode)
+          ?.description || product.validityRules[0]?.description || '',
+      validitySource:
+        product.validityRules.find((rule) => rule.conservationMode === product.defaultMode)
+          ?.source || product.validityRules[0]?.source || '',
     });
   }
 
@@ -276,6 +367,7 @@ export function Products() {
           defaultMode: editForm.defaultMode,
           keywords: editForm.keywords,
           imageUrl: editForm.imageUrl || null,
+          validityRule: validityRulePayload(editForm),
         }),
       });
 
@@ -538,10 +630,12 @@ export function Products() {
 
           <Field label="Nome" value={form.name} onChange={(value) => setForm((old) => ({ ...old, name: value }))} required />
 
-          <Field
+          <CategoryField
+            listId="product-categories-create"
             label="Categoria"
             value={form.category}
             onChange={(value) => setForm((old) => ({ ...old, category: value }))}
+            options={categoryOptions}
             required
             placeholder="Ex.: Carnes, Laticínios, Produção..."
           />
@@ -567,6 +661,13 @@ export function Products() {
             value={form.keywords}
             onChange={(value) => setForm((old) => ({ ...old, keywords: value }))}
             placeholder="Ex.: leite, molho, frango, marca..."
+          />
+
+          <ValidityFields
+            form={form}
+            onChange={(values) => setForm((old) => ({ ...old, ...values }))}
+            onSuggest={() => suggestValidity('create')}
+            loading={validityLoading === 'create'}
           />
 
           <button
@@ -618,10 +719,12 @@ export function Products() {
                 required
               />
 
-              <Field
+              <CategoryField
+                listId="product-categories-edit"
                 label="Categoria"
                 value={editForm.category}
                 onChange={(value) => setEditForm((old) => ({ ...old, category: value }))}
+                options={categoryOptions}
                 required
               />
 
@@ -645,6 +748,13 @@ export function Products() {
                 label="Palavras-chave"
                 value={editForm.keywords}
                 onChange={(value) => setEditForm((old) => ({ ...old, keywords: value }))}
+              />
+
+              <ValidityFields
+                form={editForm}
+                onChange={(values) => setEditForm((old) => ({ ...old, ...values }))}
+                onSuggest={() => suggestValidity('edit')}
+                loading={validityLoading === 'edit'}
               />
             </div>
 
@@ -765,6 +875,131 @@ function PhotoPicker({
           {aiLoading ? 'Sana está analisando...' : 'Analisar com a Sana'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function CategoryField({
+  listId,
+  label,
+  value,
+  onChange,
+  options,
+  required,
+  placeholder,
+}: {
+  listId: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  required?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-black text-slate-700">{label}</label>
+      <input
+        list={listId}
+        required={required}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="off"
+        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-safe-dark outline-none transition focus:border-safe-green focus:bg-white"
+      />
+      <datalist id={listId}>
+        {options.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+      <p className="mt-1 text-[11px] font-semibold text-slate-500">
+        Selecione uma categoria sugerida ou digite uma nova.
+      </p>
+    </div>
+  );
+}
+
+function ValidityFields({
+  form,
+  onChange,
+  onSuggest,
+  loading,
+}: {
+  form: ProductForm;
+  onChange: (values: Partial<ProductForm>) => void;
+  onSuggest: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-safe-dark">Critério de validade</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            Cadastre manualmente ou peça uma sugestão à Sana. A validação do responsável técnico continua obrigatória.
+          </p>
+        </div>
+        <Sparkles className="shrink-0 text-safe-green" size={19} />
+      </div>
+
+      <button
+        type="button"
+        onClick={onSuggest}
+        disabled={loading}
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-3 text-xs font-black text-emerald-700 disabled:opacity-60"
+      >
+        {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+        {loading ? 'Consultando critérios...' : 'Sugerir validade com a Sana'}
+      </button>
+
+      <div className="mt-3 grid grid-cols-[1fr_120px] gap-2">
+        <label className="block">
+          <span className="text-xs font-black text-slate-700">Prazo</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={form.validityValue}
+            onChange={(event) => onChange({ validityValue: event.target.value })}
+            placeholder="Ex.: 3"
+            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black text-slate-700">Unidade</span>
+          <select
+            value={form.validityUnit}
+            onChange={(event) =>
+              onChange({ validityUnit: event.target.value as 'days' | 'hours' })
+            }
+            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none"
+          >
+            <option value="days">Dias</option>
+            <option value="hours">Horas</option>
+          </select>
+        </label>
+      </div>
+
+      <label className="mt-3 block">
+        <span className="text-xs font-black text-slate-700">Descrição do critério</span>
+        <input
+          value={form.validityDescription}
+          onChange={(event) => onChange({ validityDescription: event.target.value })}
+          placeholder="Ex.: após abertura, sob refrigeração"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none"
+        />
+      </label>
+
+      <label className="mt-3 block">
+        <span className="text-xs font-black text-slate-700">Fonte / responsável pelo critério</span>
+        <input
+          value={form.validitySource}
+          onChange={(event) => onChange({ validitySource: event.target.value })}
+          placeholder="Ex.: ficha técnica do fabricante ou RT"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none"
+        />
+      </label>
     </div>
   );
 }

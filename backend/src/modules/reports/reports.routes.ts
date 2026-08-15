@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -33,7 +34,7 @@ router.get('/compliance-dossier', requireRole('ADMIN', 'MANAGER'), async (req, r
     return fail(res, 'Escolha um período de até 366 dias.', 422);
   }
 
-  const [restaurant, labels, documents, temperatures, controls, audits] = await Promise.all([
+  const [restaurant, labels, documents, temperatures, controls, sanitaryAudits] = await Promise.all([
     prisma.restaurant.findUnique({
       where: { id: req.user.restaurantId },
       select: { name: true, document: true, timezone: true },
@@ -54,14 +55,23 @@ router.get('/compliance-dossier', requireRole('ADMIN', 'MANAGER'), async (req, r
       take: 5_000,
     }),
     prisma.complianceRecord.findMany({
-      where: { restaurantId: req.user.restaurantId, status: 'ACTIVE', occurredAt: { lte: to } },
+      where: {
+        restaurantId: req.user.restaurantId,
+        status: 'ACTIVE',
+        type: { not: 'AUDIT' },
+        occurredAt: { gte: from, lte: to },
+      },
       orderBy: { occurredAt: 'desc' },
       take: 1_000,
     }),
-    prisma.auditLog.findMany({
-      where: { restaurantId: req.user.restaurantId, createdAt: { gte: from, lte: to } },
-      include: { user: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' },
+    prisma.complianceRecord.findMany({
+      where: {
+        restaurantId: req.user.restaurantId,
+        status: 'ACTIVE',
+        type: 'AUDIT',
+        occurredAt: { gte: from, lte: to },
+      },
+      orderBy: { occurredAt: 'desc' },
       take: 1_000,
     }),
   ]);
@@ -76,7 +86,7 @@ router.get('/compliance-dossier', requireRole('ADMIN', 'MANAGER'), async (req, r
     documents,
     temperatures,
     controls,
-    audits,
+    sanitaryAudits,
   });
 
   await recordAudit({
@@ -90,6 +100,134 @@ router.get('/compliance-dossier', requireRole('ADMIN', 'MANAGER'), async (req, r
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'attachment; filename="dossie-safekitchen.pdf"');
   return res.send(buffer);
+});
+
+router.get('/data-backup', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const restaurantId = req.user.restaurantId;
+  const [
+    restaurant,
+    users,
+    employees,
+    products,
+    labels,
+    documents,
+    temperaturePoints,
+    temperatureDevices,
+    temperatureReadings,
+    complianceRecords,
+    auditLogs,
+  ] = await Promise.all([
+    prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        document: true,
+        timezone: true,
+        plan: true,
+        subscriptionStatus: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.user.findMany({
+      where: { restaurantId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        lastLoginAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.employee.findMany({ where: { restaurantId }, orderBy: { createdAt: 'asc' } }),
+    prisma.product.findMany({
+      where: { OR: [{ restaurantId }, { isGlobal: true }] },
+      include: { validityRules: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.label.findMany({ where: { restaurantId }, orderBy: { createdAt: 'asc' } }),
+    prisma.document.findMany({ where: { restaurantId }, orderBy: { createdAt: 'asc' } }),
+    prisma.temperaturePoint.findMany({ where: { restaurantId }, orderBy: { createdAt: 'asc' } }),
+    prisma.temperatureDevice.findMany({
+      where: { restaurantId },
+      select: {
+        id: true,
+        pointId: true,
+        name: true,
+        externalId: true,
+        protocol: true,
+        active: true,
+        lastSeenAt: true,
+        metadata: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.temperatureReading.findMany({
+      where: { restaurantId },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.complianceRecord.findMany({
+      where: { restaurantId },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.auditLog.findMany({ where: { restaurantId }, orderBy: { createdAt: 'asc' } }),
+  ]);
+
+  if (!restaurant) return fail(res, 'Conta não encontrada.', 404);
+
+  const data = {
+    restaurant,
+    users,
+    employees,
+    products,
+    labels,
+    documents,
+    temperaturePoints,
+    temperatureDevices,
+    temperatureReadings,
+    complianceRecords,
+    auditLogs,
+  };
+  const generatedAt = new Date().toISOString();
+  const canonical = JSON.stringify({ schemaVersion: 1, generatedAt, data });
+  const digest = createHash('sha256').update(canonical).digest('hex');
+  const backup = {
+    schemaVersion: 1,
+    generatedAt,
+    restaurantId,
+    generatedBy: req.user.name,
+    integrity: {
+      algorithm: 'SHA-256',
+      digest,
+      note: 'Hash calculado sobre schemaVersion, generatedAt e data.',
+    },
+    data,
+  };
+
+  await recordAudit({
+    restaurantId,
+    userId: req.user.userId,
+    action: 'EXPORT',
+    entity: 'DataBackup',
+    metadata: { generatedAt, digest },
+  });
+
+  const date = generatedAt.slice(0, 10);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="backup-safekitchen-${date}.json"`);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.send(JSON.stringify(backup, null, 2));
 });
 
 router.get('/operational-sheet', requireRole('ADMIN', 'MANAGER'), async (req, res) => {

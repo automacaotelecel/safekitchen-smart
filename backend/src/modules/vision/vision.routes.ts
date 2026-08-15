@@ -31,6 +31,12 @@ const regulatoryQuestionSchema = z.object({
   jurisdiction: z.enum(['BR', 'SP']).default('BR'),
 });
 
+const validitySuggestionSchema = z.object({
+  productName: z.string().trim().min(2).max(180),
+  category: z.string().trim().min(2).max(100),
+  conservationMode: z.enum(['AMBIENTE', 'REFRIGERADO', 'CONGELADO']),
+});
+
 type GeminiSuggestion = {
   productName: string;
   brand: string;
@@ -64,6 +70,35 @@ class ProviderError extends Error {
   ) {
     super(message);
   }
+}
+
+function providerResponseError(data: any, status: number, fallback: string) {
+  const code = String(data?.error?.status || status);
+  const rawMessage = String(data?.error?.message || '');
+
+  if (
+    status === 401 ||
+    status === 403 ||
+    /api.?key.*(leak|reported|invalid|expired|revoked)|credential|permission.?denied|unauthenticated/i.test(
+      `${code} ${rawMessage}`
+    )
+  ) {
+    return new ProviderError(
+      'A credencial da Sana foi revogada ou está inválida. Gere uma nova chave e atualize GEMINI_API_KEY somente no servidor.',
+      503,
+      'CREDENTIAL_REVOKED'
+    );
+  }
+
+  if (status === 429) {
+    return new ProviderError(
+      'A Sana atingiu o limite temporário de consultas. Aguarde alguns minutos e tente novamente.',
+      429,
+      'RATE_LIMITED'
+    );
+  }
+
+  return new ProviderError(fallback, 503, code.slice(0, 100));
 }
 
 const allowedMimeTypes = new Set([
@@ -378,15 +413,10 @@ async function askModel(
     const finalData = data;
 
     if (!response.ok) {
-      const providerMessage =
-        finalData?.error?.message ||
-        finalData?.error?.status ||
-        `HTTP ${response.status}`;
-
-      throw new ProviderError(
-        `A Sana está temporariamente indisponível: ${providerMessage}`,
-        response.status === 429 ? 429 : 503,
-        String(finalData?.error?.status || response.status)
+      throw providerResponseError(
+        finalData,
+        response.status,
+        'A Sana está temporariamente indisponível. Tente novamente em alguns minutos.'
       );
     }
 
@@ -557,10 +587,10 @@ ${question}
       }
 
       if (!response.ok) {
-        lastError = new ProviderError(
-          data?.error?.message || 'A Sana não conseguiu consultar a base regulatória.',
-          response.status === 429 ? 429 : 503,
-          String(data?.error?.status || response.status)
+        lastError = providerResponseError(
+          data,
+          response.status,
+          'A Sana não conseguiu consultar a base regulatória neste momento.'
         );
         continue;
       }
@@ -615,6 +645,151 @@ ${question}
   throw lastError || new ProviderError('A Sana está indisponível.', 503, 'NO_MODEL');
 }
 
+async function askValiditySuggestion(input: z.infer<typeof validitySuggestionSchema>) {
+  if (!env.geminiApiKey) {
+    throw new ProviderError(
+      'A Sana ainda não foi configurada no servidor. Configure uma nova GEMINI_API_KEY e faça o deploy.',
+      503,
+      'NOT_CONFIGURED'
+    );
+  }
+
+  const prompt = `
+Você é Sana, assistente de segurança dos alimentos do SafeKitchen Smart.
+Sugira um critério inicial de validade para cadastro interno, em português do Brasil.
+
+Produto: ${input.productName}
+Categoria: ${input.category}
+Conservação: ${input.conservationMode}
+
+Regras obrigatórias:
+- A sugestão é conservadora e precisa ser validada pelo responsável técnico, fabricante ou ficha técnica.
+- Não invente referência legal, estudo, fabricante ou autoridade.
+- Não trate a sugestão como garantia de segurança ou como laudo técnico.
+- Use horas somente quando o prazo for inferior a dois dias; nos demais casos, use dias.
+- Retorne somente o JSON solicitado.
+`;
+
+  const requestBody = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 500,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        required: ['validityValue', 'validityUnit', 'description', 'confidence'],
+        properties: {
+          validityValue: { type: 'INTEGER', minimum: 1, maximum: 3650 },
+          validityUnit: { type: 'STRING', enum: ['days', 'hours'] },
+          description: { type: 'STRING' },
+          confidence: { type: 'STRING', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+        },
+      },
+    },
+  };
+
+  const models = Array.from(new Set([env.geminiModel, ...env.geminiFallbackModels]));
+  let lastError: unknown;
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), env.aiTimeoutMs);
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      let response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': env.geminiApiKey,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+      let data = await response.json().catch(() => null);
+
+      if (
+        !response.ok &&
+        response.status === 400 &&
+        String(data?.error?.status || '') === 'INVALID_ARGUMENT'
+      ) {
+        const { responseSchema: _responseSchema, ...generationConfig } =
+          requestBody.generationConfig;
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': env.geminiApiKey,
+          },
+          body: JSON.stringify({ contents: requestBody.contents, generationConfig }),
+          signal: controller.signal,
+        });
+        data = await response.json().catch(() => null);
+      }
+
+      if (!response.ok) {
+        lastError = providerResponseError(
+          data,
+          response.status,
+          'A Sana não conseguiu sugerir a validade neste momento.'
+        );
+        continue;
+      }
+
+      const raw = data?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part.text || '')
+        .join('\n')
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+      const firstBrace = String(raw || '').indexOf('{');
+      const lastBrace = String(raw || '').lastIndexOf('}');
+      const parsed = JSON.parse(
+        firstBrace >= 0 && lastBrace > firstBrace
+          ? String(raw).slice(firstBrace, lastBrace + 1)
+          : '{}'
+      ) as Record<string, unknown>;
+      const validityValue = Number(parsed.validityValue);
+      const validityUnit = parsed.validityUnit === 'hours' ? 'hours' : 'days';
+
+      if (!Number.isInteger(validityValue) || validityValue < 1 || validityValue > 3650) {
+        throw new ProviderError(
+          'A Sana não retornou um prazo de validade utilizável.',
+          502,
+          'INVALID_VALIDITY_RESPONSE'
+        );
+      }
+
+      return {
+        validityValue,
+        validityUnit: validityUnit as 'days' | 'hours',
+        description:
+          text(parsed.description) ||
+          `Critério sugerido para ${input.productName} em ${input.conservationMode.toLowerCase()}.`,
+        source: 'Sugestão da Sana - validar com responsável técnico ou ficha técnica',
+        confidence: ['HIGH', 'MEDIUM', 'LOW'].includes(String(parsed.confidence))
+          ? String(parsed.confidence)
+          : 'LOW',
+        basedOn: 'AI_SUGGESTION' as const,
+        warning:
+          'Sugestão automática: confirme o prazo com o responsável técnico, fabricante ou ficha técnica.',
+        model,
+        usage: data?.usageMetadata || {},
+      };
+    } catch (error) {
+      lastError =
+        error instanceof Error && error.name === 'AbortError'
+          ? new ProviderError('A sugestão de validade demorou demais.', 504, 'TIMEOUT')
+          : error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastError || new ProviderError('A Sana está indisponível.', 503, 'NO_MODEL');
+}
+
 async function askGemini(imageBase64: string, mimeType: string) {
   if (!env.geminiApiKey) {
     throw new ProviderError(
@@ -659,6 +834,83 @@ router.get('/health', (_req, res) => {
       ? 'Credencial da Sana configurada. A disponibilidade do provedor é validada em cada análise.'
       : 'Sana indisponível: GEMINI_API_KEY não configurada no servidor.',
   });
+});
+
+router.post('/suggest-validity', async (req, res) => {
+  if (!req.user) return fail(res, 'Não autenticado.', 401);
+
+  const parsed = validitySuggestionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return fail(res, 'Informe produto, categoria e conservação.', 422, parsed.error.flatten());
+  }
+
+  const candidateRules = await prisma.validityRule.findMany({
+    where: {
+      category: { equals: parsed.data.category, mode: 'insensitive' },
+      conservationMode: parsed.data.conservationMode,
+    },
+    include: { product: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 50,
+  });
+  const existingRule = candidateRules.find(
+    (rule) =>
+      !rule.product ||
+      rule.product.isGlobal ||
+      rule.product.restaurantId === req.user!.restaurantId
+  );
+
+  if (existingRule) {
+    return ok(res, {
+      validityValue: existingRule.validityValue,
+      validityUnit: existingRule.validityUnit,
+      description: existingRule.description,
+      source: existingRule.source,
+      confidence: 'HIGH',
+      basedOn: 'EXISTING_RULE',
+      warning: 'Sugestão baseada em um critério já cadastrado para esta categoria.',
+    });
+  }
+
+  try {
+    await assertAiQuota(req.user.restaurantId);
+    const suggestion = await askValiditySuggestion(parsed.data);
+
+    await prisma.aiUsage.create({
+      data: {
+        restaurantId: req.user.restaurantId,
+        userId: req.user.userId,
+        feature: 'VALIDITY_SUGGESTION',
+        model: suggestion.model,
+        success: true,
+        inputTokens: suggestion.usage.promptTokenCount,
+        outputTokens: suggestion.usage.candidatesTokenCount,
+      },
+    });
+
+    const { model: _model, usage: _usage, ...response } = suggestion;
+    return ok(res, response);
+  } catch (error) {
+    const providerError =
+      error instanceof ProviderError
+        ? error
+        : new ProviderError('Erro ao sugerir validade.', 500, 'INTERNAL');
+
+    await prisma.aiUsage
+      .create({
+        data: {
+          restaurantId: req.user.restaurantId,
+          userId: req.user.userId,
+          feature: 'VALIDITY_SUGGESTION',
+          model: env.geminiModel,
+          success: false,
+          errorCode: providerError.code.slice(0, 100),
+        },
+      })
+      .catch(() => undefined);
+
+    return fail(res, providerError.message, providerError.status);
+  }
 });
 
 router.post('/identify-product', async (req, res) => {

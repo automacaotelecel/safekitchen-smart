@@ -11,6 +11,13 @@ const router = Router();
 router.use(authMiddleware);
 router.use(requireActiveSubscription);
 
+const validityRuleSchema = z.object({
+  description: z.string().trim().min(2).max(240),
+  validityValue: z.number().int().min(1).max(3650),
+  validityUnit: z.enum(['days', 'hours']),
+  source: z.string().trim().min(2).max(240),
+});
+
 const productSchema = z.object({
   name: z.string().min(2, 'Informe o nome do produto.'),
   category: z.string().min(2, 'Informe a categoria.'),
@@ -19,6 +26,7 @@ const productSchema = z.object({
   keywords: z.string().optional().nullable(),
   isGlobal: z.boolean().optional(),
   active: z.boolean().optional(),
+  validityRule: validityRuleSchema.optional().nullable(),
 });
 
 const updateProductSchema = productSchema.partial();
@@ -123,25 +131,41 @@ router.post('/', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
     return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
   }
 
-  const product = await prisma.product.create({
-    data: {
-      restaurantId: req.user.restaurantId,
-      name: parsed.data.name.trim(),
-      category: parsed.data.category.trim(),
-      imageUrl: clean(parsed.data.imageUrl),
-      defaultMode: parsed.data.defaultMode,
-      keywords: parsed.data.keywords?.trim() || '',
-      isGlobal: false,
-      active: parsed.data.active ?? true,
-    },
-    include: {
-      validityRules: true,
-      _count: {
-        select: {
-          labels: true,
-        },
+  const product = await prisma.$transaction(async (tx) => {
+    const created = await tx.product.create({
+      data: {
+        restaurantId: req.user!.restaurantId,
+        name: parsed.data.name.trim(),
+        category: parsed.data.category.trim(),
+        imageUrl: clean(parsed.data.imageUrl),
+        defaultMode: parsed.data.defaultMode,
+        keywords: parsed.data.keywords?.trim() || '',
+        isGlobal: false,
+        active: parsed.data.active ?? true,
       },
-    },
+    });
+
+    if (parsed.data.validityRule) {
+      await tx.validityRule.create({
+        data: {
+          productId: created.id,
+          category: created.category,
+          description: parsed.data.validityRule.description,
+          conservationMode: created.defaultMode,
+          validityValue: parsed.data.validityRule.validityValue,
+          validityUnit: parsed.data.validityRule.validityUnit,
+          source: parsed.data.validityRule.source,
+        },
+      });
+    }
+
+    return tx.product.findUniqueOrThrow({
+      where: { id: created.id },
+      include: {
+        validityRules: true,
+        _count: { select: { labels: true } },
+      },
+    });
   });
 
   return ok(res, product, 201);
@@ -167,26 +191,56 @@ router.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (req, res) => {
     return fail(res, 'Produto não encontrado ou não editável.', 404);
   }
 
-  const updated = await prisma.product.update({
-    where: {
-      id: product.id,
-    },
-    data: {
-      ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
-      ...(parsed.data.category !== undefined ? { category: parsed.data.category.trim() } : {}),
-      ...(parsed.data.imageUrl !== undefined ? { imageUrl: clean(parsed.data.imageUrl) } : {}),
-      ...(parsed.data.defaultMode !== undefined ? { defaultMode: parsed.data.defaultMode } : {}),
-      ...(parsed.data.keywords !== undefined ? { keywords: parsed.data.keywords?.trim() || '' } : {}),
-      ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
-    },
-    include: {
-      validityRules: true,
-      _count: {
-        select: {
-          labels: true,
-        },
+  const updated = await prisma.$transaction(async (tx) => {
+    const savedProduct = await tx.product.update({
+      where: { id: product.id },
+      data: {
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
+        ...(parsed.data.category !== undefined ? { category: parsed.data.category.trim() } : {}),
+        ...(parsed.data.imageUrl !== undefined ? { imageUrl: clean(parsed.data.imageUrl) } : {}),
+        ...(parsed.data.defaultMode !== undefined ? { defaultMode: parsed.data.defaultMode } : {}),
+        ...(parsed.data.keywords !== undefined
+          ? { keywords: parsed.data.keywords?.trim() || '' }
+          : {}),
+        ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
       },
-    },
+    });
+
+    if (parsed.data.validityRule) {
+      const existingRule = await tx.validityRule.findFirst({
+        where: {
+          productId: savedProduct.id,
+          conservationMode: savedProduct.defaultMode,
+        },
+      });
+      const ruleData = {
+        category: savedProduct.category,
+        description: parsed.data.validityRule.description,
+        conservationMode: savedProduct.defaultMode,
+        validityValue: parsed.data.validityRule.validityValue,
+        validityUnit: parsed.data.validityRule.validityUnit,
+        source: parsed.data.validityRule.source,
+      };
+
+      if (existingRule) {
+        await tx.validityRule.update({
+          where: { id: existingRule.id },
+          data: ruleData,
+        });
+      } else {
+        await tx.validityRule.create({
+          data: { ...ruleData, productId: savedProduct.id },
+        });
+      }
+    }
+
+    return tx.product.findUniqueOrThrow({
+      where: { id: savedProduct.id },
+      include: {
+        validityRules: true,
+        _count: { select: { labels: true } },
+      },
+    });
   });
 
   return ok(res, updated);

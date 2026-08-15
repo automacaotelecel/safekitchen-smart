@@ -14,7 +14,7 @@ test('gera dossiê PDF válido com dados mínimos', async () => {
     documents: [],
     temperatures: [],
     controls: [],
-    audits: [],
+    sanitaryAudits: [],
   });
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
   assert.ok(pdf.length > 1_000);

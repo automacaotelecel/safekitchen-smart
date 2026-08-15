@@ -4,12 +4,20 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ExternalLink,
+  FileUp,
   MinusCircle,
   ShieldAlert,
   XCircle,
 } from 'lucide-react';
 
 import { api } from '../api/client';
+import { localDateTimeInput } from '../utils/date';
+import {
+  openEvidenceDocument,
+  uploadEvidenceDocument,
+  validateEvidenceFile,
+  type StorageInfo,
+} from '../utils/evidence';
 import type {
   AuditChecklistResult,
   AuditRecord,
@@ -21,15 +29,14 @@ type AnswerState = {
   notes: string;
 };
 
-function localDateTimeInput() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
 function recordScore(record: AuditRecord) {
   const data = record.data;
   return typeof data?.score === 'number' ? data.score : 0;
+}
+
+function recordEvidenceCount(record: AuditRecord) {
+  return (record.data?.answers || []).filter((answer) => answer.evidenceDocumentId)
+    .length;
 }
 
 export function Audits() {
@@ -46,18 +53,25 @@ export function Audits() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File | null>>({});
+  const [storage, setStorage] = useState<StorageInfo>({
+    enabled: false,
+    maxDocumentBytes: 0,
+  });
 
   async function load() {
     setLoading(true);
     setMessage('');
 
     try {
-      const [templateData, historyData] = await Promise.all([
+      const [templateData, historyData, storageInfo] = await Promise.all([
         api<AuditTemplate>(`/api/audits/template?jurisdiction=${jurisdiction}`),
         api<AuditRecord[]>('/api/audits'),
+        api<StorageInfo>('/api/documents/storage'),
       ]);
       setTemplate(templateData);
       setHistory(historyData);
+      setStorage(storageInfo);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -107,6 +121,10 @@ export function Audits() {
     }));
   }
 
+  function setEvidence(itemId: string, file: File | null) {
+    setEvidenceFiles((current) => ({ ...current, [itemId]: file }));
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!template) return;
@@ -122,6 +140,28 @@ export function Audits() {
     setMessage('');
 
     try {
+      const uploadedEvidence: Record<
+        string,
+        { evidenceDocumentId: string; evidenceFileName: string }
+      > = {};
+
+      for (const item of template.items) {
+        const file = evidenceFiles[item.id];
+        if (!file) continue;
+
+        validateEvidenceFile(file, storage);
+        const document = await uploadEvidenceDocument({
+          file,
+          name: `Evidência de auditoria - ${item.reference}`,
+          category: 'Evidências de auditoria',
+          notes: item.requirement,
+        });
+        uploadedEvidence[item.id] = {
+          evidenceDocumentId: document.id,
+          evidenceFileName: document.fileName || file.name,
+        };
+      }
+
       const record = await api<AuditRecord>('/api/audits', {
         method: 'POST',
         body: JSON.stringify({
@@ -133,12 +173,16 @@ export function Audits() {
             itemId: item.id,
             result: answers[item.id].result,
             notes: answers[item.id].notes || null,
+            evidenceDocumentId:
+              uploadedEvidence[item.id]?.evidenceDocumentId || null,
+            evidenceFileName: uploadedEvidence[item.id]?.evidenceFileName || null,
           })),
         }),
       });
 
       setHistory((current) => [record, ...current]);
       setAnswers({});
+      setEvidenceFiles({});
       setForm((current) => ({
         ...current,
         occurredAt: localDateTimeInput(),
@@ -280,6 +324,21 @@ export function Audits() {
                 />
               </div>
             </div>
+
+            {jurisdiction === 'SP' && (
+              <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs font-semibold leading-5 text-blue-900">
+                A opção São Paulo está ativa: o checklist combina a RDC 216 com os itens
+                complementares estaduais e sinaliza a transição entre as Portarias CVS nº
+                5/2013 e nº 3/2026.
+              </div>
+            )}
+
+            {!storage.enabled && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">
+                As respostas podem ser salvas normalmente. Para anexar fotos em cada pergunta,
+                configure o armazenamento de arquivos no servidor.
+              </div>
+            )}
           </section>
 
           {sections.map(([section, items]) => (
@@ -340,6 +399,21 @@ export function Audits() {
                         className="input-base mt-3 min-h-20"
                         placeholder="Evidência, não conformidade ou ação corretiva..."
                       />
+
+                      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs font-black text-slate-600 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+                        <FileUp size={15} />
+                        {evidenceFiles[item.id]?.name || 'Anexar foto ou PDF da evidência'}
+                        <input
+                          type="file"
+                          accept="image/*,.pdf,application/pdf"
+                          capture="environment"
+                          disabled={!storage.enabled}
+                          className="sr-only"
+                          onChange={(event) =>
+                            setEvidence(item.id, event.target.files?.[0] || null)
+                          }
+                        />
+                      </label>
                     </article>
                   );
                 })}
@@ -396,6 +470,25 @@ export function Audits() {
                     {new Date(record.occurredAt).toLocaleString('pt-BR')} •{' '}
                     {record.responsibleName}
                   </p>
+                  {recordEvidenceCount(record) > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(record.data?.answers || [])
+                        .filter((answer) => answer.evidenceDocumentId)
+                        .map((answer) => (
+                          <button
+                            key={`${record.id}-${answer.itemId}`}
+                            type="button"
+                            onClick={() =>
+                              void openEvidenceDocument(answer.evidenceDocumentId as string)
+                            }
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-800"
+                          >
+                            <ExternalLink size={11} />
+                            {answer.evidenceFileName || `Evidência ${answer.itemId}`}
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="rounded-full bg-safe-soft px-3 py-2 text-xs font-black text-safe-green">

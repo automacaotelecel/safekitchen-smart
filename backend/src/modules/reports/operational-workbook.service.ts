@@ -47,7 +47,7 @@ const kindTitles: Record<OperationalExportKind, string> = {
   READY_FOOD: 'Planilha de Controle de Temperatura do Alimento Pronto',
   REFRIGERATED_FOOD: 'Planilha de Controle de Temperatura do Alimento Refrigerado',
   DISTRIBUTION: 'Planilha de Controle de Temperatura na Distribuição',
-  RECEIVING: 'Planilha de Controle de Recebimento',
+  RECEIVING: 'Planilha de Recebimento de Perecíveis',
   MAINTENANCE: 'Planilha de Controle de Manutenção de Equipamentos',
   RESERVOIR_CLEANING: 'Planilha de Controle de Higienização do Reservatório',
   NON_ROUTINE_CLEANING: 'Planilha de Controle de Higienização Não Rotineira',

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { api } from '../api/client';
+import { localDateTimeInput } from '../utils/date';
 import type {
   TemperatureCategory,
   TemperaturePoint,
@@ -23,16 +24,10 @@ const categoryLabels: Record<TemperatureCategory, string> = {
   READY_FOOD: 'Alimento pronto',
   REFRIGERATED_FOOD: 'Alimento refrigerado',
   DISTRIBUTION: 'Distribuição',
-  RECEIVING: 'Recebimento',
+  RECEIVING: 'Recebimento de perecíveis',
 };
 
 const categories = Object.keys(categoryLabels) as TemperatureCategory[];
-
-function localDateTimeInput() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString('pt-BR');
@@ -289,7 +284,7 @@ export function TemperatureControl() {
               </select>
             </Field>
 
-            <Field label="Ponto/equipamento">
+            <Field label="Ponto/área de medição">
               <select
                 value={form.pointId}
                 onChange={(event) =>
@@ -297,13 +292,17 @@ export function TemperatureControl() {
                 }
                 className="input-base"
               >
-                <option value="">Sem ponto cadastrado</option>
+                <option value="">Sem área/ponto cadastrado</option>
                 {pointsForCategory.map((point) => (
                   <option key={point.id} value={point.id}>
                     {point.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                É o local físico ou equipamento onde a medição acontece, por exemplo:
+                açougue, câmara fria, freezer, área de preparo ou balcão de distribuição.
+              </p>
             </Field>
 
             <Field label={form.category === 'EQUIPMENT' ? 'Equipamento' : 'Alimento/produto'}>
@@ -441,8 +440,12 @@ export function TemperatureControl() {
         <div className="space-y-4">
           <details className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <summary className="cursor-pointer text-lg font-black text-safe-dark">
-              Cadastrar ponto e limites
+              Cadastrar área/ponto e limites
             </summary>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              “Ponto” representa uma área da cozinha ou um equipamento específico que precisa
+              ser monitorado.
+            </p>
             <form onSubmit={savePoint} className="mt-4 space-y-3">
               <input
                 required
@@ -451,7 +454,7 @@ export function TemperatureControl() {
                   setPointForm((old) => ({ ...old, name: event.target.value }))
                 }
                 className="input-base"
-                placeholder="Nome do equipamento/ponto"
+                placeholder="Ex.: Açougue, câmara fria 01 ou freezer"
               />
               <select
                 value={pointForm.category}

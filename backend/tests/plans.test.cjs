@@ -15,4 +15,11 @@ test('planos comerciais possuem preços e limites válidos', () => {
   assert.equal(getCommercialPlan('professional').code, 'PRO');
   assert.equal(getCommercialPlan('essential').code, 'START');
   assert.equal(planForAccess('TRIAL').code, 'PRO');
+
+  const start = getCommercialPlan('START');
+  const pro = getCommercialPlan('PRO');
+  assert.equal(start.setupAmountCents, 99_000);
+  assert.equal(start.amountCents, 19_700);
+  assert.equal(pro.setupAmountCents, 370_000);
+  assert.equal(pro.amountCents, 49_700);
 });

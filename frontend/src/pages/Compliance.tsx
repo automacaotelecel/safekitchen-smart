@@ -3,11 +3,20 @@ import {
   Archive,
   CalendarClock,
   ClipboardCheck,
+  ExternalLink,
+  FileUp,
   RefreshCcw,
 } from 'lucide-react';
 
 import { api } from '../api/client';
 import type { ComplianceRecord, ComplianceType } from '../types';
+import { localDateTimeInput } from '../utils/date';
+import {
+  openEvidenceDocument,
+  uploadEvidenceDocument,
+  validateEvidenceFile,
+  type StorageInfo,
+} from '../utils/evidence';
 
 type OperationalComplianceType = Exclude<ComplianceType, 'AUDIT'>;
 
@@ -16,14 +25,8 @@ const typeLabels: Record<OperationalComplianceType, string> = {
   RESERVOIR_CLEANING: 'Higienização de reservatório',
   NON_ROUTINE_CLEANING: 'Higienização não rotineira',
   TRAINING: 'Treinamento',
-  RECEIVING: 'Controle de recebimento',
+  RECEIVING: 'Recebimento de perecíveis',
 };
-
-function localDateTimeInput() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
 
 function dueState(value?: string | null) {
   if (!value) return { label: 'Sem próxima data', classes: 'bg-slate-100 text-slate-600' };
@@ -58,12 +61,23 @@ export function Compliance() {
   });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [storage, setStorage] = useState<StorageInfo>({
+    enabled: false,
+    maxDocumentBytes: 0,
+  });
 
   async function load() {
     setLoading(true);
 
     try {
-      setRecords(await api<ComplianceRecord[]>('/api/compliance'));
+      const [items, storageInfo] = await Promise.all([
+        api<ComplianceRecord[]>('/api/compliance'),
+        api<StorageInfo>('/api/documents/storage'),
+      ]);
+      setRecords(items);
+      setStorage(storageInfo);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Erro ao carregar registros.');
     } finally {
@@ -78,8 +92,24 @@ export function Compliance() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setMessage('');
+    setSaving(true);
 
     try {
+      let evidenceDocumentId: string | null = null;
+      let evidenceFileName: string | null = null;
+
+      if (evidenceFile) {
+        validateEvidenceFile(evidenceFile, storage);
+        const evidence = await uploadEvidenceDocument({
+          file: evidenceFile,
+          name: `Evidência - ${form.subject || typeLabels[form.type]}`,
+          category: 'Evidências de controles',
+          notes: `Anexo do controle ${typeLabels[form.type]}.`,
+        });
+        evidenceDocumentId = evidence.id;
+        evidenceFileName = evidence.fileName || evidenceFile.name;
+      }
+
       await api<ComplianceRecord>('/api/compliance', {
         method: 'POST',
         body: JSON.stringify({
@@ -105,6 +135,8 @@ export function Compliance() {
             participants: form.participants || null,
             shifts: form.shifts || null,
             signatures: form.signatures || null,
+            evidenceDocumentId,
+            evidenceFileName,
           },
         }),
       });
@@ -129,10 +161,13 @@ export function Compliance() {
         shifts: '',
         signatures: '',
       }));
+      setEvidenceFile(null);
       setMessage('Registro salvo com sucesso.');
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Erro ao salvar registro.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -140,6 +175,14 @@ export function Compliance() {
     if (!window.confirm('Arquivar este registro?')) return;
     await api<ComplianceRecord>(`/api/compliance/${id}`, { method: 'DELETE' });
     await load();
+  }
+
+  async function openEvidence(documentId: string) {
+    try {
+      await openEvidenceDocument(documentId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível abrir a evidência.');
+    }
   }
 
   return (
@@ -152,7 +195,7 @@ export function Compliance() {
             </p>
             <h1 className="mt-2 text-3xl font-black text-safe-dark">Manutenção, higiene e treinamento</h1>
             <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
-              Substitui as planilhas de manutenção, higienização, recebimento e atas de treinamento,
+              Substitui as planilhas de manutenção, higienização, recebimento de perecíveis e atas de treinamento,
               mantendo responsável, histórico e próxima data.
             </p>
           </div>
@@ -362,7 +405,13 @@ export function Compliance() {
                 className="input-base"
               />
             </Field>
-            <Field label="Próxima data">
+            <Field
+              label={
+                form.type === 'TRAINING'
+                  ? 'Próximo treinamento (opcional)'
+                  : 'Próxima data (opcional)'
+              }
+            >
               <input
                 type="datetime-local"
                 value={form.nextDueAt}
@@ -387,10 +436,31 @@ export function Compliance() {
                 className="input-base min-h-28"
               />
             </Field>
+
+            <Field label="Anexar evidência (opcional)">
+              <input
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                disabled={!storage.enabled}
+                onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)}
+                className="block w-full rounded-2xl border border-dashed border-slate-300 p-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                Foto, certificado, laudo ou PDF. Ex.: certificado de limpeza da caixa d’água.
+              </p>
+              {!storage.enabled && (
+                <p className="mt-2 text-xs font-bold text-amber-700">
+                  Configure o armazenamento de arquivos no servidor para liberar anexos.
+                </p>
+              )}
+            </Field>
           </div>
-          <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-4 text-sm font-black text-white">
-            <ClipboardCheck size={18} />
-            Salvar registro
+          <button
+            disabled={saving}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-4 text-sm font-black text-white disabled:opacity-60"
+          >
+            {evidenceFile ? <FileUp size={18} /> : <ClipboardCheck size={18} />}
+            {saving ? 'Salvando registro...' : 'Salvar registro'}
           </button>
         </form>
 
@@ -406,6 +476,10 @@ export function Compliance() {
             <div className="mt-4 space-y-3">
               {records.map((record) => {
                 const state = dueState(record.nextDueAt);
+                const evidenceDocumentId =
+                  typeof record.data?.evidenceDocumentId === 'string'
+                    ? record.data.evidenceDocumentId
+                    : '';
                 return (
                   <article key={record.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -427,14 +501,26 @@ export function Compliance() {
                         </p>
                         {record.notes && <p className="mt-2 text-sm text-slate-600">{record.notes}</p>}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => archive(record.id)}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-black text-slate-600"
-                      >
-                        <Archive size={14} />
-                        Arquivar
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        {evidenceDocumentId && (
+                          <button
+                            type="button"
+                            onClick={() => openEvidence(evidenceDocumentId)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-safe-dark px-3 py-2 text-xs font-black text-white"
+                          >
+                            <ExternalLink size={14} />
+                            Evidência
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => archive(record.id)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-black text-slate-600"
+                        >
+                          <Archive size={14} />
+                          Arquivar
+                        </button>
+                      </div>
                     </div>
                   </article>
                 );

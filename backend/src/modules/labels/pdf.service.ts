@@ -21,11 +21,21 @@ type LabelLike = {
 function brDate(value?: Date | string | null) {
   if (!value) return '—';
 
+  if (typeof value === 'string') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  }
+
   const date = value instanceof Date ? value : new Date(value);
 
   if (Number.isNaN(date.getTime())) return '—';
 
-  return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function brDateTime(value?: Date | string | null) {
@@ -37,9 +47,27 @@ function brDateTime(value?: Date | string | null) {
 
   return date.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
-    dateStyle: 'short',
-    timeStyle: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
+}
+
+function labelDateTitle(type?: string | null) {
+  const map: Record<string, string> = {
+    PRODUTO_ABERTO: 'Data de abertura',
+    PRODUCAO: 'Data de produção',
+    DESCONGELAMENTO_DESSALGUE: 'Data de início',
+    ARMAZENAMENTO_CARNES: 'Data de recebimento',
+    REEMBALAGEM: 'Data de reembalagem',
+    AMOSTRAS: 'Data da coleta',
+    NAO_CONFORME: 'Data de identificação',
+    PRODUTO_QUIMICO: 'Data de preparo',
+  };
+
+  return map[type || ''] || 'Data';
 }
 
 function labelTypeName(type?: string | null) {
@@ -101,43 +129,54 @@ function collectExtraRows(label: LabelLike) {
   const extra = normalizeExtraData(label.extraData);
   const rows: Array<[string, string]> = [];
 
-  const push = (title: string, key: string) => {
+  const push = (
+    title: string,
+    key: string,
+    formatter: (value: unknown) => string = asText
+  ) => {
     const value = extra[key];
 
     if (value !== null && value !== undefined && asText(value).trim()) {
-      rows.push([title, asText(value)]);
+      rows.push([title, formatter(value)]);
     }
   };
 
+  const dateValue = (value: unknown) => brDate(asText(value));
+
   push('Restaurante', 'restaurantName');
-  push('Data da coleta', 'collectionDate');
+  push('Data da coleta', 'collectionDate', dateValue);
   push('Hora da coleta', 'collectionTime');
 
   push('Finalidade', 'chemicalPurpose');
   push('Diluição (ml)', 'dilutionMl');
   push('Diluição (litros)', 'dilutionLiters');
-  push('Data preparo', 'preparationDate');
+  push('Data preparo', 'preparationDate', dateValue);
   push('Hora preparo', 'preparationTime');
-  push('Validade química', 'chemicalValidity');
+  push('Validade química', 'chemicalValidity', dateValue);
 
   push('Não conformidade', 'nonConformityReasons');
   push('Outro motivo', 'otherNonConformity');
-  push('Data identificação', 'identificationDate');
+  push('Data identificação', 'identificationDate', dateValue);
   push('Ação tomada', 'actionTaken');
 
   push('Método', 'thawingMethod');
-  push('Data início', 'startDate');
+  push('Data início', 'startDate', dateValue);
   push('Hora início', 'startTime');
 
-  push('Tipo de carne', 'meatType');
-  push('MAPA/SIF', 'mapaSif');
-  push('Data recebimento', 'receiptDate');
-  push('Temperatura receb.', 'receivingTemperatureC');
-  push('Armazenamento', 'storageType');
+  if (label.type === 'ARMAZENAMENTO_CARNES') {
+    push('Tipo de carne', 'meatType');
+    push('MAPA/SIF', 'mapaSif');
+    push(
+      'Temperatura receb.',
+      'receivingTemperatureC',
+      (value) => `${asText(value)} °C`
+    );
+    push('Armazenamento', 'storageType');
+  }
 
-  push('Data reembalagem', 'repackagingDate');
-  push('Validade original', 'originalValidity');
-  push('Nova validade', 'newValidity');
+  push('Data reembalagem', 'repackagingDate', dateValue);
+  push('Validade original', 'originalValidity', dateValue);
+  push('Nova validade', 'newValidity', dateValue);
 
   return rows;
 }
@@ -209,16 +248,20 @@ function drawLabel(doc: PDFKit.PDFDocument, label: LabelLike, x: number, y: numb
   row('Conservação', conservationName(label.conservationMode));
 
   if (label.type === 'AMOSTRAS') {
-    row('Coleta', brDateTime(label.openedAt));
+    row('Data da coleta', brDateTime(label.openedAt));
     row('Descarte', brDateTime(label.expiresAt));
   } else if (label.type === 'REEMBALAGEM') {
-    row('Reembalagem', brDateTime(label.openedAt));
+    row('Data de reembalagem', brDateTime(label.openedAt));
     row('Nova validade', brDateTime(label.expiresAt));
   } else if (label.type === 'DESCONGELAMENTO_DESSALGUE') {
-    row('Início', brDateTime(label.openedAt));
+    row('Data de início', brDateTime(label.openedAt));
+    row('Validade', brDateTime(label.expiresAt));
+  } else if (label.type === 'ARMAZENAMENTO_CARNES') {
+    const extra = normalizeExtraData(label.extraData);
+    row('Data de recebimento', brDate(asText(extra.receiptDate)));
     row('Validade', brDateTime(label.expiresAt));
   } else {
-    row('Aberto/manip.', brDateTime(label.openedAt));
+    row(labelDateTitle(label.type), brDateTime(label.openedAt));
     row('Validade', brDateTime(label.expiresAt));
   }
 
@@ -314,6 +357,10 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
   const canceled = label.status === 'CANCELADA';
   const extra = normalizeExtraData(label.extraData);
   const receivingTemperature = asText(extra.receivingTemperatureC).trim();
+  const primaryDate =
+    label.type === 'ARMAZENAMENTO_CARNES' && asText(extra.receiptDate).trim()
+      ? brDate(asText(extra.receiptDate))
+      : brDateTime(label.openedAt);
 
   doc
     .rect(0, 0, B21_LABEL_WIDTH, B21_LABEL_HEIGHT)
@@ -375,8 +422,8 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
   }
 
   compactRow(
-    label.type === 'AMOSTRAS' ? 'Coleta' : 'Data base',
-    brDateTime(label.openedAt),
+    labelDateTitle(label.type),
+    primaryDate,
     leftX,
     36
   );

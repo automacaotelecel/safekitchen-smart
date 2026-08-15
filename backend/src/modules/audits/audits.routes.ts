@@ -7,7 +7,7 @@ import { fail, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { authMiddleware } from '../auth/auth.middleware';
 import {
-  rdc216AuditChecklist,
+  checklistForJurisdiction,
   sourcesForJurisdiction,
 } from '../regulatory/regulatory.knowledge';
 import { requireActiveSubscription } from '../subscription/subscription.middleware';
@@ -21,6 +21,8 @@ const answerSchema = z.object({
   itemId: z.string(),
   result: z.enum(['CONFORM', 'NON_CONFORM', 'NOT_APPLICABLE']),
   notes: z.string().trim().max(1000).optional().nullable(),
+  evidenceDocumentId: z.string().optional().nullable(),
+  evidenceFileName: z.string().trim().max(220).optional().nullable(),
 });
 
 const auditSchema = z.object({
@@ -34,16 +36,19 @@ const auditSchema = z.object({
 
 router.get('/template', async (req, res) => {
   const jurisdiction = String(req.query.jurisdiction || 'BR') === 'SP' ? 'SP' : 'BR';
+  const isSaoPaulo = jurisdiction === 'SP';
 
   return ok(res, {
-    id: 'RDC216_V1',
-    name: 'Checklist de auditoria — RDC Anvisa nº 216/2004',
-    version: '2026-07-28',
+    id: isSaoPaulo ? 'RDC216_SP_V2' : 'RDC216_V2',
+    name: isSaoPaulo
+      ? 'Checklist de auditoria - RDC 216 + legislação de São Paulo'
+      : 'Checklist de auditoria - RDC Anvisa nº 216/2004',
+    version: '2026-08-14',
     jurisdiction,
     disclaimer:
       'Ferramenta de apoio à auditoria interna. A avaliação deve ser validada pelo responsável técnico e considerar regras estaduais e municipais aplicáveis.',
     sources: sourcesForJurisdiction(jurisdiction),
-    items: rdc216AuditChecklist,
+    items: checklistForJurisdiction(jurisdiction),
   });
 });
 
@@ -71,7 +76,8 @@ router.post('/', async (req, res) => {
     return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
   }
 
-  const validIds = new Set(rdc216AuditChecklist.map((item) => item.id));
+  const checklist = checklistForJurisdiction(parsed.data.jurisdiction);
+  const validIds = new Set(checklist.map((item) => item.id));
   const uniqueIds = new Set(parsed.data.answers.map((answer) => answer.itemId));
 
   if (
@@ -79,6 +85,26 @@ router.post('/', async (req, res) => {
     parsed.data.answers.some((answer) => !validIds.has(answer.itemId))
   ) {
     return fail(res, 'O checklist contém itens inválidos ou duplicados.', 422);
+  }
+
+  const evidenceIds = parsed.data.answers
+    .map((answer) => answer.evidenceDocumentId)
+    .filter((id): id is string => Boolean(id));
+
+  if (evidenceIds.length) {
+    const documents = await prisma.document.findMany({
+      where: {
+        id: { in: evidenceIds },
+        restaurantId: req.user.restaurantId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    const allowedIds = new Set(documents.map((document) => document.id));
+
+    if (evidenceIds.some((id) => !allowedIds.has(id))) {
+      return fail(res, 'Uma ou mais evidências não pertencem a esta conta.', 422);
+    }
   }
 
   const evaluated = parsed.data.answers.filter(
@@ -100,8 +126,9 @@ router.post('/', async (req, res) => {
       responsibleName: parsed.data.responsibleName,
       notes: parsed.data.notes || null,
       data: {
-        templateId: 'RDC216_V1',
-        templateVersion: '2026-07-28',
+        templateId:
+          parsed.data.jurisdiction === 'SP' ? 'RDC216_SP_V2' : 'RDC216_V2',
+        templateVersion: '2026-08-14',
         jurisdiction: parsed.data.jurisdiction,
         score,
         conform,
@@ -123,10 +150,12 @@ router.post('/', async (req, res) => {
     entity: 'SanitaryAudit',
     entityId: record.id,
     metadata: {
-      templateId: 'RDC216_V1',
+      templateId:
+        parsed.data.jurisdiction === 'SP' ? 'RDC216_SP_V2' : 'RDC216_V2',
       jurisdiction: parsed.data.jurisdiction,
       score,
       nonConform,
+      evidenceCount: evidenceIds.length,
     },
   });
 

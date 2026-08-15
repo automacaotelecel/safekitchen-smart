@@ -4,6 +4,7 @@ import { addDays, addHours } from 'date-fns';
 
 import { prisma } from '../../lib/prisma';
 import { recordAudit } from '../../lib/audit';
+import { parseClientDateTime } from '../../lib/date';
 import { fail, ok } from '../../lib/http';
 import { authMiddleware } from '../auth/auth.middleware';
 import { requireActiveSubscription } from '../subscription/subscription.middleware';
@@ -12,6 +13,7 @@ import {
   generateBatchLabelsPdf,
   generateLabelPdf,
 } from './pdf.service';
+import { calculateSampleExpiration } from './label-policy';
 
 const router = Router();
 
@@ -43,11 +45,6 @@ const labelSchema = z.object({
   extraData: z.record(z.any()).optional().nullable(),
 });
 
-function parseDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function normalizeText(value: unknown) {
   if (typeof value !== 'string') return null;
 
@@ -68,7 +65,7 @@ async function calculateExpiration(input: {
   if (input.type === 'NAO_CONFORME') return null;
 
   if (input.type === 'AMOSTRAS') {
-    return addHours(input.openedAt, 72);
+    return calculateSampleExpiration(input.openedAt);
   }
 
   if (input.manualValidityValue && input.manualValidityValue > 0) {
@@ -176,8 +173,27 @@ router.post('/', async (req, res) => {
     return fail(res, error instanceof Error ? error.message : 'Limite do plano atingido.', 409);
   }
 
-  const openedAt = parseDate(parsed.data.openedAt);
-  if (!openedAt) return fail(res, 'Data base inválida.', 422);
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: req.user.restaurantId },
+    select: { timezone: true },
+  });
+  const openedAt = parseClientDateTime(
+    parsed.data.openedAt,
+    restaurant?.timezone || 'America/Sao_Paulo'
+  );
+  if (!openedAt) return fail(res, 'Data e horário inválidos.', 422);
+
+  if (
+    parsed.data.type !== 'ARMAZENAMENTO_CARNES' &&
+    parsed.data.receivingTemperatureC !== null &&
+    parsed.data.receivingTemperatureC !== undefined
+  ) {
+    return fail(
+      res,
+      'A temperatura de recebimento é exclusiva da etiqueta de armazenamento de carnes.',
+      422
+    );
+  }
 
   if (parsed.data.productId) {
     const product = await prisma.product.findFirst({
@@ -224,9 +240,12 @@ router.post('/', async (req, res) => {
     );
   }
 
+  const { receivingTemperatureC: _ignoredReceivingTemperature, ...safeExtraData } =
+    parsed.data.extraData || {};
   const normalizedExtraData = {
-    ...(parsed.data.extraData || {}),
-    ...(parsed.data.receivingTemperatureC !== null &&
+    ...safeExtraData,
+    ...(parsed.data.type === 'ARMAZENAMENTO_CARNES' &&
+    parsed.data.receivingTemperatureC !== null &&
     parsed.data.receivingTemperatureC !== undefined
       ? { receivingTemperatureC: parsed.data.receivingTemperatureC }
       : {}),
@@ -256,7 +275,11 @@ router.post('/', async (req, res) => {
       },
     });
 
-    if (parsed.data.receivingTemperatureC !== null && parsed.data.receivingTemperatureC !== undefined) {
+    if (
+      parsed.data.type === 'ARMAZENAMENTO_CARNES' &&
+      parsed.data.receivingTemperatureC !== null &&
+      parsed.data.receivingTemperatureC !== undefined
+    ) {
       await tx.complianceRecord.create({
         data: {
           restaurantId: req.user!.restaurantId,

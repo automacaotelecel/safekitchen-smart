@@ -11,10 +11,18 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { addDays, addHours, format } from 'date-fns';
+import { addDays, addHours } from 'date-fns';
 
 import { api, API_URL, getToken } from '../api/client';
 import { shareOrOpenPdfFromUrl } from '../utils/printPdf';
+import {
+  formatPtDate,
+  formatPtDateTime,
+  localDateInput,
+  localDateTimeInput,
+  localDateTimeToIso,
+  localTimeInput,
+} from '../utils/date';
 import type {
   ConservationMode,
   Employee,
@@ -22,7 +30,7 @@ import type {
   LabelType,
   Product,
 } from '../types';
-import { labelTypes } from '../utils/labels';
+import { labelBaseDateName, labelTypes } from '../utils/labels';
 
 type FormState = {
   type: LabelType;
@@ -85,7 +93,7 @@ const initialForm: FormState = {
   supplier: '',
   batch: '',
   conservationMode: 'REFRIGERADO',
-  openedAt: now.toISOString().slice(0, 16),
+  openedAt: localDateTimeInput(now),
   responsibleName: '',
   employeeId: '',
   quantity: '',
@@ -99,46 +107,38 @@ const initialExtra: ExtraState = {
   restaurantName: 'SafeKitchen Smart',
   sampleShift: '',
 
-  collectionDate: now.toISOString().slice(0, 10),
-  collectionTime: now.toTimeString().slice(0, 5),
+  collectionDate: localDateInput(now),
+  collectionTime: localTimeInput(now),
 
   chemicalPurpose: '',
   dilutionMl: '',
   dilutionLiters: '',
-  preparationDate: now.toISOString().slice(0, 10),
-  preparationTime: now.toTimeString().slice(0, 5),
+  preparationDate: localDateInput(now),
+  preparationTime: localTimeInput(now),
   chemicalValidity: '',
 
   nonConformityReasons: [],
   otherNonConformity: '',
-  identificationDate: now.toISOString().slice(0, 10),
+  identificationDate: localDateInput(now),
   actionTaken: [],
 
   thawingMethod: '',
-  startDate: now.toISOString().slice(0, 10),
-  startTime: now.toTimeString().slice(0, 5),
+  startDate: localDateInput(now),
+  startTime: localTimeInput(now),
 
   meatType: '',
   mapaSif: '',
-  receiptDate: now.toISOString().slice(0, 10),
+  receiptDate: localDateInput(now),
   storageType: '',
 
-  repackagingDate: now.toISOString().slice(0, 10),
+  repackagingDate: localDateInput(now),
   originalValidity: '',
   newValidity: '',
 };
 
 
-function todayInputDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function nowInputTime() {
-  return new Date().toTimeString().slice(0, 5);
-}
-
 function buildLocalDateTime(dateValue?: string, timeValue?: string) {
-  const date = dateValue || todayInputDate();
+  const date = dateValue || localDateInput();
   const time = timeValue || '00:00';
 
   return `${date}T${time}`;
@@ -147,7 +147,7 @@ function buildLocalDateTime(dateValue?: string, timeValue?: string) {
 function dateToInputDate(value?: Date | null) {
   if (!value || Number.isNaN(value.getTime())) return '';
 
-  return value.toISOString().slice(0, 10);
+  return localDateInput(value);
 }
 
 
@@ -374,7 +374,7 @@ export function NewLabel() {
     }
 
     if (form.type === 'AMOSTRAS') {
-      return addHours(baseDate, 72);
+      return addHours(baseDate, 96);
     }
 
     if (form.type === 'PRODUTO_QUIMICO' && extra.chemicalValidity) {
@@ -456,14 +456,14 @@ export function NewLabel() {
 
   function pickLabelType(type: LabelType) {
     const freshNow = new Date();
-    const freshDate = freshNow.toISOString().slice(0, 10);
-    const freshTime = freshNow.toTimeString().slice(0, 5);
+    const freshDate = localDateInput(freshNow);
+    const freshTime = localTimeInput(freshNow);
 
     setForm({
       ...initialForm,
       type,
       conservationMode: type === 'PRODUTO_QUIMICO' ? 'AMBIENTE' : 'REFRIGERADO',
-      openedAt: freshNow.toISOString().slice(0, 16),
+      openedAt: localDateTimeInput(freshNow),
     });
 
     setExtra({
@@ -578,11 +578,21 @@ export function NewLabel() {
             ? buildLocalDateTime(extra.startDate, extra.startTime)
             : form.type === 'REEMBALAGEM'
               ? buildLocalDateTime(extra.repackagingDate, '00:00')
+              : form.type === 'PRODUTO_QUIMICO'
+                ? buildLocalDateTime(extra.preparationDate, extra.preparationTime)
+                : form.type === 'NAO_CONFORME'
+                  ? buildLocalDateTime(extra.identificationDate, '00:00')
               : form.openedAt;
+
+      const openedAtIso = localDateTimeToIso(baseLabelOpenedAt);
+
+      if (!openedAtIso) {
+        throw new Error('Informe uma data e um horário válidos.');
+      }
 
       const payload = {
         ...form,
-        openedAt: baseLabelOpenedAt,
+        openedAt: openedAtIso,
         productId: form.productId || null,
         employeeId: form.employeeId || null,
         brand: form.brand || null,
@@ -596,7 +606,8 @@ export function NewLabel() {
         manualValidityUnit: form.manualValidityValue
           ? form.manualValidityUnit
           : null,
-        receivingTemperatureC: form.receivingTemperatureC
+        receivingTemperatureC:
+          form.type === 'ARMAZENAMENTO_CARNES' && form.receivingTemperatureC
           ? Number(form.receivingTemperatureC)
           : null,
         extraData: buildExtraData(),
@@ -861,10 +872,10 @@ export function NewLabel() {
 
                 {shouldShowOpenedAt && (
                   <PreviewRow
-                    label="Data base"
+                    label={labelBaseDateName(form.type)}
                     value={
                       form.openedAt
-                        ? format(new Date(form.openedAt), 'dd/MM/yyyy HH:mm')
+                        ? formatPtDateTime(form.openedAt)
                         : '-'
                     }
                   />
@@ -920,7 +931,7 @@ export function NewLabel() {
                   label={form.type === 'AMOSTRAS' ? 'Descarte' : form.type === 'REEMBALAGEM' ? 'Nova validade' : 'Validade'}
                   value={
                     previewExpiration
-                      ? format(previewExpiration, 'dd/MM/yyyy HH:mm')
+                      ? formatPtDateTime(previewExpiration)
                       : '-'
                   }
                 />
@@ -942,7 +953,7 @@ export function NewLabel() {
 
             {form.type === 'AMOSTRAS' && (
               <p className="mt-3 rounded-2xl bg-safe-soft p-3 text-xs font-bold text-safe-dark">
-                Amostras: descarte automático 72 horas após a coleta.
+                Amostras: descarte automático 96 horas após a coleta.
               </p>
             )}
           </div>
@@ -1167,7 +1178,7 @@ function OpenedAtField({
   return (
     <div>
       <label className="text-sm font-black text-slate-700 dark:text-slate-200">
-        Aberto/manipulado em
+        {labelBaseDateName(form.type)}
       </label>
 
       <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-[#151515]">
@@ -1289,18 +1300,20 @@ function AdditionalFields({
             placeholder="Ex.: 2kg, 1 bandeja, 20 unidades"
           />
 
-          <Input
-            label="Temperatura de recebimento (°C)"
-            type="number"
-            value={form.receivingTemperatureC}
-            onChange={(value) =>
-              setForm((old) => ({
-                ...old,
-                receivingTemperatureC: value,
-              }))
-            }
-            placeholder="Opcional — será registrada no controle, não na etiqueta"
-          />
+          {form.type === 'ARMAZENAMENTO_CARNES' && (
+            <Input
+              label="Temperatura de recebimento (°C)"
+              type="number"
+              value={form.receivingTemperatureC}
+              onChange={(value) =>
+                setForm((old) => ({
+                  ...old,
+                  receivingTemperatureC: value,
+                }))
+              }
+              placeholder="Opcional — exclusiva desta etiqueta"
+            />
+          )}
 
           <div className="grid grid-cols-[1fr_120px] gap-3 sm:grid-cols-[1fr_130px]">
             <Input
@@ -1838,13 +1851,8 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatDatePreview(value?: string) {
-  if (!value) return '-';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return '-';
-
-  return format(date, 'dd/MM/yyyy');
+  const formatted = formatPtDate(value);
+  return formatted === '—' ? '-' : formatted;
 }
 
 export default NewLabel;

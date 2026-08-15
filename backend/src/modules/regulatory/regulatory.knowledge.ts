@@ -266,6 +266,48 @@ export const rdc216AuditChecklist: AuditChecklistItem[] = [
   },
 ];
 
+export const saoPauloAuditChecklist: AuditChecklistItem[] = [
+  {
+    id: 'SP_TRN_01',
+    section: 'Legislação complementar - São Paulo',
+    reference: 'Portarias CVS nº 5/2013 e nº 3/2026 (período de transição)',
+    requirement:
+      'O estabelecimento identificou quais procedimentos e documentos precisam ser atualizados para a entrada em vigor do novo regulamento estadual.',
+    evidenceHint:
+      'Plano de adequação, responsável, prazos internos e registro de revisão dos procedimentos.',
+  },
+  {
+    id: 'SP_DOC_01',
+    section: 'Legislação complementar - São Paulo',
+    reference: 'Portaria CVS nº 5/2013 - documentação e registros',
+    requirement:
+      'Os documentos de Boas Práticas refletem a operação, permanecem acessíveis e possuem registros que demonstram sua execução.',
+    evidenceHint: 'Manual, POPs, formulários preenchidos, responsáveis e datas de revisão.',
+  },
+  {
+    id: 'SP_RCV_01',
+    section: 'Legislação complementar - São Paulo',
+    reference: 'Portaria CVS nº 5/2013 - recebimento e armazenamento',
+    requirement:
+      'O recebimento de perecíveis adota critérios documentados de integridade, validade, conservação, temperatura quando aplicável e rejeição.',
+    evidenceHint: 'Controle de recebimento, registros de temperatura e critérios de devolução.',
+  },
+  {
+    id: 'SP_TMP_01',
+    section: 'Legislação complementar - São Paulo',
+    reference: 'Portaria CVS nº 5/2013 - controle de tempo e temperatura',
+    requirement:
+      'Os limites de tempo e temperatura adotados pela operação estão definidos, monitorados e validados pelo responsável técnico.',
+    evidenceHint: 'Planilhas, limites aprovados, calibração e ações corretivas registradas.',
+  },
+];
+
+export function checklistForJurisdiction(jurisdiction: RegulatoryJurisdiction) {
+  return jurisdiction === 'SP'
+    ? [...rdc216AuditChecklist, ...saoPauloAuditChecklist]
+    : rdc216AuditChecklist;
+}
+
 export function sourcesForJurisdiction(jurisdiction: RegulatoryJurisdiction) {
   return regulatorySources.filter(
     (source) => source.jurisdiction === 'BR' || source.jurisdiction === jurisdiction

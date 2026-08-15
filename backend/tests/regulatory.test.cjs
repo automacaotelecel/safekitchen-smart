@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  checklistForJurisdiction,
   rdc216AuditChecklist,
   regulatorySources,
   sourcesForJurisdiction,
@@ -30,4 +31,10 @@ test('jurisdição de São Paulo inclui fontes nacional e estaduais versionadas'
     regulatorySources.find((source) => source.id === 'CVS_3_2026').status,
     'FUTURE'
   );
+
+  const national = checklistForJurisdiction('BR');
+  const saoPaulo = checklistForJurisdiction('SP');
+  assert.ok(saoPaulo.length > national.length);
+  assert.ok(saoPaulo.some((item) => item.id === 'SP_TRN_01'));
+  assert.equal(new Set(saoPaulo.map((item) => item.id)).size, saoPaulo.length);
 });

@@ -8,6 +8,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prebuild": "npm run security:check",
     "build": "prisma generate && tsc",
     "start": "prisma migrate deploy && tsx prisma/seed.ts && node dist/server.js",
     "prisma:generate": "prisma generate",
@@ -16,7 +17,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "setup": "npm install && npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
     "check": "tsc --noEmit && prisma validate",
-    "test": "npm run build && node --test tests/*.test.cjs"
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "security:check": "node scripts/check-secrets.cjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -31,6 +31,28 @@ const recordSchema = z.object({
   data: z.record(z.unknown()).optional(),
 });
 
+async function evidenceBelongsToRestaurant(
+  restaurantId: string,
+  data?: Record<string, unknown>
+) {
+  const evidenceDocumentId = data?.evidenceDocumentId;
+  if (evidenceDocumentId === null || evidenceDocumentId === undefined || evidenceDocumentId === '') {
+    return true;
+  }
+  if (typeof evidenceDocumentId !== 'string') return false;
+
+  const document = await prisma.document.findFirst({
+    where: {
+      id: evidenceDocumentId,
+      restaurantId,
+      status: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+
+  return Boolean(document);
+}
+
 router.get('/summary', async (req, res) => {
   if (!req.user) return fail(res, 'Não autenticado.', 401);
 
@@ -84,6 +106,9 @@ router.post('/', async (req, res) => {
 
   const parsed = recordSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  if (!(await evidenceBelongsToRestaurant(req.user.restaurantId, parsed.data.data))) {
+    return fail(res, 'A evidência informada não pertence a esta conta.', 422);
+  }
 
   const record = await prisma.complianceRecord.create({
     data: {
@@ -105,7 +130,10 @@ router.post('/', async (req, res) => {
     action: 'CREATE',
     entity: 'ComplianceRecord',
     entityId: record.id,
-    metadata: { type: record.type },
+    metadata: {
+      type: record.type,
+      evidenceAttached: Boolean(parsed.data.data?.evidenceDocumentId),
+    },
   });
 
   return ok(res, record, 201);
@@ -116,6 +144,9 @@ router.patch('/:id', async (req, res) => {
 
   const parsed = recordSchema.partial().safeParse(req.body);
   if (!parsed.success) return fail(res, 'Dados inválidos.', 422, parsed.error.flatten());
+  if (!(await evidenceBelongsToRestaurant(req.user.restaurantId, parsed.data.data))) {
+    return fail(res, 'A evidência informada não pertence a esta conta.', 422);
+  }
 
   const existing = await prisma.complianceRecord.findFirst({
     where: {

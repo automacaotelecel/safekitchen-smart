@@ -176,6 +176,16 @@ export type VisionIdentifyResponse = {
   warning: string;
 };
 
+export type ValiditySuggestionResponse = {
+  validityValue: number;
+  validityUnit: ValidityUnit;
+  description: string;
+  source: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  basedOn: 'EXISTING_RULE' | 'AI_SUGGESTION';
+  warning: string;
+};
+
 export type RegulatorySource = {
   id: string;
   title: string;
@@ -224,6 +234,13 @@ export type AuditRecord = ComplianceRecord & {
     nonConform?: number;
     notApplicable?: number;
     total?: number;
+    answers?: Array<{
+      itemId: string;
+      result: AuditChecklistResult;
+      notes?: string | null;
+      evidenceDocumentId?: string | null;
+      evidenceFileName?: string | null;
+    }>;
   };
 };
 

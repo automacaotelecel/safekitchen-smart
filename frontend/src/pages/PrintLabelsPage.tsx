@@ -4,6 +4,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import type { Label, LabelExtraData, LabelType } from '../types';
+import { formatPtDate, formatPtDateTime } from '../utils/date';
+import { labelBaseDateName } from '../utils/labels';
 import {
   getDirectPrintSupport,
   printDirectToNiimbot,
@@ -25,29 +27,11 @@ function labelTypeName(type?: LabelType | string | null) {
 }
 
 function brDateTime(value?: string | null) {
-  if (!value) return '—';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return '—';
-
-  return date.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatPtDateTime(value);
 }
 
 function brDate(value?: string | null) {
-  if (!value) return '—';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return '—';
-
-  return date.toLocaleDateString('pt-BR');
+  return formatPtDate(value);
 }
 
 function conservationName(mode?: string | null) {
@@ -109,7 +93,9 @@ function LabelCard({ label }: { label: Label }) {
         <Row label={validityTitle} value={brDateTime(label.expiresAt)} />
 
         {!isSample && <Row label="Conservação" value={conservationName(label.conservationMode)} />}
-        {!isSample && <Row label="Aberto/manipulado" value={brDateTime(label.openedAt)} />}
+        {!isSample && label.type !== 'ARMAZENAMENTO_CARNES' && (
+          <Row label={labelBaseDateName(label.type)} value={brDateTime(label.openedAt)} />
+        )}
 
         {isSample && <Row label="Restaurante" value={asText(extra.restaurantName) || '—'} />}
         {isSample && <Row label="Turno" value={asText(extra.sampleShift) || '—'} />}

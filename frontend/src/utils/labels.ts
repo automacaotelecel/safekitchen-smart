@@ -29,7 +29,7 @@ export const labelTypes: { value: LabelType; label: string; description: string 
   {
     value: 'AMOSTRAS',
     label: 'Amostras',
-    description: 'Coleta, responsável, restaurante e descarte automático em 72h.'
+    description: 'Coleta, responsável, restaurante e descarte automático em 96 horas.'
   },
   {
     value: 'NAO_CONFORME',
@@ -45,4 +45,19 @@ export const labelTypes: { value: LabelType; label: string; description: string 
 
 export function labelTypeName(type: LabelType) {
   return labelTypes.find((item) => item.value === type)?.label || type;
+}
+
+export function labelBaseDateName(type: LabelType) {
+  const names: Record<LabelType, string> = {
+    PRODUTO_ABERTO: 'Data de abertura',
+    PRODUCAO: 'Data de produção',
+    DESCONGELAMENTO_DESSALGUE: 'Data de início',
+    ARMAZENAMENTO_CARNES: 'Data de recebimento',
+    REEMBALAGEM: 'Data de reembalagem',
+    AMOSTRAS: 'Data da coleta',
+    NAO_CONFORME: 'Data de identificação',
+    PRODUTO_QUIMICO: 'Data de preparo',
+  };
+
+  return names[type];
 }

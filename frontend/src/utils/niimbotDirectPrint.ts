@@ -7,6 +7,7 @@ import {
 } from '@mmote/niimbluelib';
 
 import type { Label, LabelExtraData, LabelType } from '../types';
+import { labelBaseDateName } from './labels';
 
 export type DirectPrintStage =
   | 'connecting'
@@ -121,7 +122,7 @@ function formatDateTime(value?: string | null) {
     timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
-    year: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -129,14 +130,19 @@ function formatDateTime(value?: string | null) {
 
 function formatDate(value: unknown) {
   if (!value) return '—';
-  const date = new Date(String(value));
+  const raw = String(value);
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+
+  const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return String(value);
 
   return date.toLocaleDateString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
-    year: '2-digit',
+    year: 'numeric',
   });
 }
 
@@ -210,13 +216,13 @@ function renderLabelCanvas(label: Label, metadata: PrinterModelMeta) {
   const rows: Array<[string, string]> =
     label.type === 'ARMAZENAMENTO_CARNES'
       ? [
-          ['Recebimento', formatDate(extra.receiptDate)],
+          ['Data de recebimento', formatDate(extra.receiptDate)],
           ['Temperatura', receivingTemperature || 'Não registrada'],
           ['Validade', formatDateTime(label.expiresAt)],
           ['Responsável', label.responsibleName || '—'],
         ]
       : [
-          [label.type === 'AMOSTRAS' ? 'Coleta' : 'Data base', formatDateTime(label.openedAt)],
+          [labelBaseDateName(label.type), formatDateTime(label.openedAt)],
           [label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade', formatDateTime(label.expiresAt)],
           ['Responsável', label.responsibleName || '—'],
           ['Conservação', conservationName(label.conservationMode)],
