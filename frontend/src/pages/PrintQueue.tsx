@@ -274,7 +274,7 @@ export function PrintQueue() {
 
             <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
               Selecione etiquetas, defina as cópias e abra a tela de impressão. Em
-              navegadores compatíveis, ela conecta diretamente à NIIMBOT B21 por Bluetooth.
+              navegadores compatíveis, ela conecta diretamente à Tomate MDK-022 por TSPL.
             </p>
           </div>
 
@@ -313,9 +313,9 @@ export function PrintQueue() {
         <div className="mt-4 rounded-2xl bg-safe-soft px-4 py-3 text-xs font-bold leading-5 text-safe-dark">
           <p>{getMobilePrintHelpText()}</p>
           <p className="mt-1">
-            Perfil preparado para <strong>NIIMBOT B21 • etiqueta 50 × 30 mm</strong>.
-            O PDF térmico continua disponível como contingência quando o Bluetooth direto
-            não for oferecido pelo aparelho.
+            Perfil preparado para <strong>Tomate MDK-022 • etiqueta 102 × 152 mm • 203 dpi</strong>.
+            No computador, a conexão direta usa Bluetooth SPP/porta serial; no Android, usa
+            BLE. O PDF térmico continua disponível como contingência.
           </p>
         </div>
 

@@ -12,7 +12,6 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@mmote/niimbluelib": "0.0.1-alpha.41",
     "@vitejs/plugin-react": "^6.0.3",
     "@zxing/browser": "^0.1.5",
     "date-fns": "^4.1.0",

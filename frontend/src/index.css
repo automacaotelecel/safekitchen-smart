@@ -440,14 +440,15 @@ html.dark aside:not(.app-content aside) {
 
 .print-label-sheet {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 408px));
   gap: 12px;
   align-items: start;
+  justify-content: center;
 }
 
 .print-label-card {
   width: 100%;
-  min-height: 188px;
+  min-height: 560px;
   border: 2px solid #19D09C;
   border-radius: 14px;
   overflow: hidden;
@@ -514,18 +515,17 @@ html.dark aside:not(.app-content aside) {
 }
 
 /* =========================================================
-   IMPRESSÃO TÉRMICA (50x30mm)
-   Substitui qualquer configuração anterior de impressão
+   IMPRESSÃO TÉRMICA TOMATE MDK-022 (102 x 152 mm, 203 dpi)
    ========================================================= */
 @media print {
   @page {
-    size: 50mm 30mm;
+    size: 102mm 152mm;
     margin: 0;
   }
 
   html,
   body {
-    width: 50mm !important;
+    width: 102mm !important;
     min-width: 0 !important;
     max-width: none !important;
     height: auto !important;
@@ -539,7 +539,7 @@ html.dark aside:not(.app-content aside) {
   }
 
   #root {
-    width: 50mm !important;
+    width: 102mm !important;
     min-width: 0 !important;
     max-width: none !important;
     height: auto !important;
@@ -557,7 +557,7 @@ html.dark aside:not(.app-content aside) {
 
   .print-page-screen {
     display: block !important;
-    width: 50mm !important;
+    width: 102mm !important;
     height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
@@ -568,7 +568,7 @@ html.dark aside:not(.app-content aside) {
 
   .print-label-sheet {
     display: block !important;
-    width: 50mm !important;
+    width: 102mm !important;
     height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
@@ -578,12 +578,12 @@ html.dark aside:not(.app-content aside) {
 
   .print-label-card {
     display: block !important;
-    width: 50mm !important;
-    height: 30mm !important;
-    min-height: 30mm !important;
-    max-height: 30mm !important;
+    width: 102mm !important;
+    height: 152mm !important;
+    min-height: 152mm !important;
+    max-height: 152mm !important;
     margin: 0 !important;
-    padding: 2mm !important;
+    padding: 5mm !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -594,8 +594,8 @@ html.dark aside:not(.app-content aside) {
     page-break-after: always;
     overflow: hidden !important;
     font-family: Arial, sans-serif !important;
-    font-size: 7px !important;
-    line-height: 1.1 !important;
+    font-size: 10pt !important;
+    line-height: 1.2 !important;
     color: black !important;
   }
 
@@ -605,48 +605,57 @@ html.dark aside:not(.app-content aside) {
   }
 
   .print-label-body {
-    padding: 0 !important;
+    padding: 2mm 0 0 !important;
+    max-height: 116mm !important;
+    overflow: hidden !important;
   }
 
   .print-label-header {
     background: transparent !important;
     color: black !important;
     padding: 0 !important;
-    margin-bottom: 2px !important;
-    border-bottom: 1px solid black !important;
+    margin-bottom: 2mm !important;
+    border-bottom: 0.5mm solid black !important;
   }
 
   .print-label-header h2 {
-    font-size: 9px !important;
+    font-size: 18pt !important;
     font-weight: 900 !important;
     margin: 0 !important;
     color: black !important;
   }
 
   .print-label-header p {
-    font-size: 6px !important;
-    margin: 0 !important;
+    font-size: 9pt !important;
+    margin: 0 0 1mm !important;
     color: black !important;
   }
 
   .print-label-row {
-    display: flex !important;
-    justify-content: space-between !important;
-    margin-bottom: 1px !important;
+    display: grid !important;
+    grid-template-columns: 34mm 1fr !important;
+    gap: 3mm !important;
+    margin: 0 !important;
     border: none !important;
-    padding: 0 !important;
+    border-bottom: 0.2mm solid #b8b8b8 !important;
+    padding: 2mm 0 !important;
+    font-size: 9.5pt !important;
   }
 
   .print-label-row span, .print-label-row strong {
     color: black !important;
   }
 
+  .print-label-row strong {
+    text-align: right !important;
+  }
+
   .print-label-footer {
-    font-size: 5px !important;
+    font-size: 7pt !important;
     text-align: center !important;
-    margin-top: 2px !important;
-    border-top: 1px dashed black !important;
-    padding-top: 1px !important;
+    margin-top: 2mm !important;
+    border-top: 0.3mm dashed black !important;
+    padding-top: 1.5mm !important;
     color: black !important;
   }
 }

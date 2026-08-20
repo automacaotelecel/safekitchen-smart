@@ -12,3 +12,11 @@ test('horário que já possui fuso não é reinterpretado', () => {
   const date = parseClientDateTime('2026-08-14T20:15:00-03:00');
   assert.equal(date.toISOString(), '2026-08-14T23:15:00.000Z');
 });
+
+test('data inexistente não é normalizada silenciosamente', () => {
+  assert.equal(parseClientDateTime('2026-02-31T20:15'), null);
+});
+
+test('fuso IANA inválido retorna null', () => {
+  assert.equal(parseClientDateTime('2026-08-14T20:15', 'Fuso/Inexistente'), null);
+});

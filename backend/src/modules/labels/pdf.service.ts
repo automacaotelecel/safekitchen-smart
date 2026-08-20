@@ -348,12 +348,12 @@ function createPdfBuffer(draw: (doc: PDFKit.PDFDocument) => void): Promise<Buffe
 }
 
 const MILLIMETER_IN_POINTS = 72 / 25.4;
-const B21_LABEL_WIDTH = 50 * MILLIMETER_IN_POINTS;
-const B21_LABEL_HEIGHT = 30 * MILLIMETER_IN_POINTS;
+const TOMATE_LABEL_WIDTH = 102 * MILLIMETER_IN_POINTS;
+const TOMATE_LABEL_HEIGHT = 152 * MILLIMETER_IN_POINTS;
 
 function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
-  const margin = 5;
-  const contentWidth = B21_LABEL_WIDTH - margin * 2;
+  const margin = 12;
+  const contentWidth = TOMATE_LABEL_WIDTH - margin * 2;
   const canceled = label.status === 'CANCELADA';
   const extra = normalizeExtraData(label.extraData);
   const receivingTemperature = asText(extra.receivingTemperatureC).trim();
@@ -363,109 +363,127 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
       : brDateTime(label.openedAt);
 
   doc
-    .rect(0, 0, B21_LABEL_WIDTH, B21_LABEL_HEIGHT)
+    .rect(0, 0, TOMATE_LABEL_WIDTH, TOMATE_LABEL_HEIGHT)
     .fillColor('#ffffff')
     .fill();
 
   doc
-    .font('Helvetica-Bold')
-    .fontSize(5.2)
+    .roundedRect(margin, margin, contentWidth, TOMATE_LABEL_HEIGHT - margin * 2, 5)
+    .lineWidth(1.2)
+    .strokeColor('#111111')
+    .stroke();
+
+  doc
+    .rect(margin, margin, contentWidth, 38)
     .fillColor('#111111')
-    .text(labelTypeName(label.type).toUpperCase(), margin, 4, {
-      width: contentWidth,
+    .fill();
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10.5)
+    .fillColor('#ffffff')
+    .text(labelTypeName(label.type).toUpperCase(), margin + 8, margin + 13, {
+      width: contentWidth - 16,
       align: 'center',
       lineBreak: false,
       ellipsis: true,
     });
 
   doc
-    .moveTo(margin, 11)
-    .lineTo(B21_LABEL_WIDTH - margin, 11)
-    .lineWidth(0.5)
-    .strokeColor('#111111')
-    .stroke();
-
-  doc
     .font('Helvetica-Bold')
-    .fontSize(8.5)
+    .fontSize(20)
     .fillColor('#000000')
-    .text(label.productName || 'PRODUTO', margin, 14, {
-      width: contentWidth,
-      height: 19,
+    .text(label.productName || 'PRODUTO', margin + 8, margin + 52, {
+      width: contentWidth - 16,
+      height: 48,
       align: 'center',
       ellipsis: true,
     });
 
-  const leftX = margin;
-  const rightX = B21_LABEL_WIDTH / 2 + 1;
-  const columnWidth = B21_LABEL_WIDTH / 2 - margin - 3;
+  doc
+    .moveTo(margin + 8, margin + 106)
+    .lineTo(TOMATE_LABEL_WIDTH - margin - 8, margin + 106)
+    .lineWidth(1)
+    .strokeColor('#111111')
+    .stroke();
 
-  function compactRow(title: string, value: string, x: number, y: number) {
+  const rows: Array<[string, string]> = [
+    [labelDateTitle(label.type), primaryDate],
+    [label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade', brDateTime(label.expiresAt)],
+    ['Responsável', label.responsibleName || '—'],
+    ['Conservação', conservationName(label.conservationMode)],
+  ];
+
+  const push = (title: string, value?: string | null) => {
+    if (value && value.trim()) rows.push([title, value.trim()]);
+  };
+
+  if (label.type === 'ARMAZENAMENTO_CARNES' && receivingTemperature) {
+    push('Temperatura', `${receivingTemperature} °C`);
+  }
+
+  push('Lote', label.batch);
+  push('Quantidade', label.quantity);
+  push('Marca', label.brand);
+  push('Fornecedor', label.supplier);
+  collectExtraRows(label).forEach(([title, value]) => push(title, value));
+  push('Observações', label.observations);
+
+  const visibleRows = rows.slice(0, 11);
+  const rowsTop = margin + 118;
+  const footerTop = TOMATE_LABEL_HEIGHT - margin - 30;
+  const rowHeight = Math.min(24, (footerTop - rowsTop) / Math.max(visibleRows.length, 1));
+  const titleWidth = 91;
+
+  visibleRows.forEach(([title, value], index) => {
+    const y = rowsTop + index * rowHeight;
+
+    if (index > 0) {
+      doc
+        .moveTo(margin + 8, y)
+        .lineTo(TOMATE_LABEL_WIDTH - margin - 8, y)
+        .lineWidth(0.35)
+        .strokeColor('#b8b8b8')
+        .stroke();
+    }
+
     doc
       .font('Helvetica-Bold')
-      .fontSize(4.4)
+      .fontSize(8.5)
       .fillColor('#111111')
-      .text(`${title}:`, x, y, {
-        width: columnWidth,
+      .text(`${title}:`, margin + 8, y + 7, {
+        width: titleWidth,
         lineBreak: false,
         ellipsis: true,
       });
 
     doc
       .font('Helvetica')
-      .fontSize(4.8)
-      .text(value || '—', x, y + 5, {
-        width: columnWidth,
+      .fontSize(9)
+      .fillColor('#111111')
+      .text(value || '—', margin + 8 + titleWidth, y + 7, {
+        width: contentWidth - titleWidth - 24,
+        align: 'right',
         lineBreak: false,
         ellipsis: true,
       });
-  }
-
-  compactRow(
-    labelDateTitle(label.type),
-    primaryDate,
-    leftX,
-    36
-  );
-  compactRow(
-    label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade',
-    brDateTime(label.expiresAt),
-    rightX,
-    36
-  );
-  compactRow('Responsável', label.responsibleName || '—', leftX, 49);
-  compactRow('Conservação', conservationName(label.conservationMode), rightX, 49);
-  compactRow('Lote', label.batch || '—', leftX, 62);
-  compactRow(
-    label.type === 'ARMAZENAMENTO_CARNES' && receivingTemperature
-      ? 'Temperatura'
-      : label.quantity
-        ? 'Quantidade'
-        : label.brand
-          ? 'Marca'
-          : 'Fornecedor',
-    label.type === 'ARMAZENAMENTO_CARNES' && receivingTemperature
-      ? `${receivingTemperature} °C`
-      : label.quantity || label.brand || label.supplier || '—',
-    rightX,
-    62
-  );
+  });
 
   doc
-    .moveTo(margin, 75)
-    .lineTo(B21_LABEL_WIDTH - margin, 75)
-    .lineWidth(0.35)
-    .dash(1, { space: 1 })
+    .moveTo(margin + 8, footerTop)
+    .lineTo(TOMATE_LABEL_WIDTH - margin - 8, footerTop)
+    .lineWidth(0.6)
+    .dash(2, { space: 2 })
     .strokeColor('#555555')
     .stroke()
     .undash();
 
   doc
-    .font('Helvetica')
-    .fontSize(3.7)
+    .font('Helvetica-Bold')
+    .fontSize(7)
     .fillColor('#444444')
-    .text(`SafeKitchen Smart • ${label.id}`, margin, 77, {
-      width: contentWidth,
+    .text(`SafeKitchen Smart - ${label.id}`, margin + 8, footerTop + 10, {
+      width: contentWidth - 16,
       align: 'center',
       lineBreak: false,
       ellipsis: true,
@@ -474,13 +492,13 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
   if (canceled) {
     doc
       .save()
-      .rotate(-15, { origin: [B21_LABEL_WIDTH / 2, B21_LABEL_HEIGHT / 2] })
+      .rotate(-20, { origin: [TOMATE_LABEL_WIDTH / 2, TOMATE_LABEL_HEIGHT / 2] })
       .font('Helvetica-Bold')
-      .fontSize(16)
+      .fontSize(42)
       .fillColor('#000000')
       .opacity(0.18)
-      .text('CANCELADA', 12, 38, {
-        width: B21_LABEL_WIDTH - 24,
+      .text('CANCELADA', 24, TOMATE_LABEL_HEIGHT / 2 - 24, {
+        width: TOMATE_LABEL_WIDTH - 48,
         align: 'center',
       })
       .opacity(1)
@@ -491,7 +509,7 @@ function drawThermalLabel(doc: PDFKit.PDFDocument, label: LabelLike) {
 function createThermalPdfBuffer(labels: LabelLike[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
-      size: [B21_LABEL_WIDTH, B21_LABEL_HEIGHT],
+      size: [TOMATE_LABEL_WIDTH, TOMATE_LABEL_HEIGHT],
       margin: 0,
       bufferPages: true,
       autoFirstPage: false,
@@ -504,7 +522,7 @@ function createThermalPdfBuffer(labels: LabelLike[]): Promise<Buffer> {
 
     for (const label of labels) {
       doc.addPage({
-        size: [B21_LABEL_WIDTH, B21_LABEL_HEIGHT],
+        size: [TOMATE_LABEL_WIDTH, TOMATE_LABEL_HEIGHT],
         margin: 0,
       });
       drawThermalLabel(doc, label);

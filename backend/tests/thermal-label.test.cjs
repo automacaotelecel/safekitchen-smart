@@ -17,12 +17,12 @@ const sample = {
   status: 'ATIVA',
 };
 
-test('PDF individual usa página térmica de 50 x 30 mm para Nimbot B21', async () => {
+test('PDF individual usa página térmica de 102 x 152 mm para Tomate MDK-022', async () => {
   const buffer = await generateLabelPdf(sample);
   const pdf = buffer.toString('latin1');
 
   assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
-  assert.match(pdf, /\/MediaBox \[0 0 141\.732283 85\.03937\]/);
+  assert.match(pdf, /\/MediaBox \[0 0 289\.133858 430\.866142\]/);
 });
 
 test('lote térmico cria uma página por etiqueta', async () => {

@@ -157,7 +157,7 @@ export async function shareOrOpenPdfFromUrl(
     return {
       mode: 'opened' as const,
       message:
-        'PDF térmico 50 × 30 mm aberto. Use Ctrl+P e selecione uma impressora instalada no sistema.',
+        'PDF térmico 102 × 152 mm aberto. Use Ctrl+P e selecione a Tomate MDK-022 instalada no sistema.',
     };
   }
 
@@ -187,7 +187,7 @@ export async function shareOrOpenPdfFromUrl(
   return {
       mode: 'opened' as const,
       message:
-        'PDF térmico 50 × 30 mm aberto. Use as opções de compartilhar, salvar ou imprimir do celular.',
+        'PDF térmico 102 × 152 mm aberto. Use as opções de compartilhar, salvar ou imprimir do celular.',
   };
 }
 
@@ -226,14 +226,14 @@ export async function shareOrOpenPdfFromPost(
   return {
     mode: 'opened' as const,
     message:
-      'PDF térmico 50 × 30 mm aberto. Imprima pelo navegador ou salve como arquivo de contingência.',
+      'PDF térmico 102 × 152 mm aberto. Imprima pelo navegador ou salve como arquivo de contingência.',
   };
 }
 
 export function getMobilePrintHelpText() {
   if (!isMobileDevice()) {
-    return 'No computador, o PDF térmico 50 × 30 mm será aberto em uma nova aba para impressão.';
+    return 'No computador, o PDF térmico 102 × 152 mm será aberto em uma nova aba para impressão.';
   }
 
-  return 'No celular, use “Imprimir agora” para acessar o Bluetooth direto quando disponível. O PDF térmico é a alternativa para navegadores incompatíveis.';
+  return 'No celular, use “Imprimir agora” para acessar a Tomate MDK-022 por Bluetooth BLE. O PDF térmico 102 × 152 mm é a alternativa para navegadores incompatíveis.';
 }

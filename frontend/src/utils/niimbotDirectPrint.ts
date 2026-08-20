@@ -1,11 +1,3 @@
-import {
-  ImageEncoder,
-  LabelType as NiimbotLabelType,
-  NiimbotBluetoothClient,
-  PrinterModel,
-  type PrinterModelMeta,
-} from '@mmote/niimbluelib';
-
 import type { Label, LabelExtraData, LabelType } from '../types';
 import { labelBaseDateName } from './labels';
 
@@ -25,55 +17,136 @@ export type DirectPrintProgress = {
 
 export type DirectPrintResult = {
   deviceName: string;
-  model: string;
+  model: 'MDK-022';
   pages: number;
+  transport: 'Bluetooth BLE' | 'Bluetooth/USB serial';
 };
 
-const B21_MODELS = new Set<PrinterModel>([
-  PrinterModel.B21,
-  PrinterModel.B21_PRO,
-  PrinterModel.B21_C2B,
-  PrinterModel.B21_L2B,
-  PrinterModel.B21S,
-  PrinterModel.B21S_C2B,
-]);
+type DirectTransport = 'ble' | 'serial';
 
-const MAX_DIRECT_PAGES = 100;
-let bluetoothClient: NiimbotBluetoothClient | null = null;
+type SerialPortInfo = {
+  usbVendorId?: number;
+  usbProductId?: number;
+  bluetoothServiceClassId?: number | string;
+};
 
-function client() {
-  bluetoothClient ??= new NiimbotBluetoothClient();
-  return bluetoothClient;
+type SerialPortLike = {
+  readable: ReadableStream<Uint8Array> | null;
+  writable: WritableStream<Uint8Array> | null;
+  open(options: {
+    baudRate: number;
+    dataBits?: number;
+    stopBits?: number;
+    parity?: 'none' | 'even' | 'odd';
+    bufferSize?: number;
+    flowControl?: 'none' | 'hardware';
+  }): Promise<void>;
+  close(): Promise<void>;
+  getInfo(): SerialPortInfo;
+};
+
+type SerialApi = {
+  getPorts(): Promise<SerialPortLike[]>;
+  requestPort(options?: {
+    allowedBluetoothServiceClassIds?: Array<number | string>;
+  }): Promise<SerialPortLike>;
+};
+
+const MODEL = 'MDK-022' as const;
+const LABEL_WIDTH_MM = 102;
+const LABEL_HEIGHT_MM = 152;
+const configuredGap = Number(import.meta.env.VITE_TOMATE_LABEL_GAP_MM ?? 3);
+const LABEL_GAP_MM =
+  Number.isFinite(configuredGap) && configuredGap >= 0.5 && configuredGap <= 10
+    ? configuredGap
+    : 3;
+const DOTS_PER_MM = 8;
+const LABEL_WIDTH_DOTS = LABEL_WIDTH_MM * DOTS_PER_MM;
+const LABEL_HEIGHT_DOTS = LABEL_HEIGHT_MM * DOTS_PER_MM;
+const MAX_DIRECT_PAGES = 30;
+const FEASYCOM_SERVICE_UUID = 0xfff0;
+const BUILD_ID = 'MDK022-2026-08-20-01';
+
+// A foto de autodiagnóstico informa BLE e SPP. FFF0/FFF2 é o perfil transparente
+// padrão documentado pela Feasycom; os UUIDs adicionais cobrem outros módulos
+// seriais comuns sem relaxar o filtro para dispositivos Bluetooth não relacionados.
+const BLE_SERVICE_UUIDS: BluetoothServiceUUID[] = [
+  FEASYCOM_SERVICE_UUID,
+  0xffe0,
+  0xff00,
+  0x18f0,
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+];
+
+let activeJob = false;
+let jobSequence = 0;
+let serialPort: SerialPortLike | null = null;
+let bleDevice: BluetoothDevice | null = null;
+let bleCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
+let bleChunkSize: number | null = null;
+
+export const TOMATE_PRINT_BUILD = BUILD_ID;
+
+function serialApi() {
+  return (navigator as Navigator & { serial?: SerialApi }).serial;
+}
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function directPrintEnabled() {
+  const configured =
+    import.meta.env.VITE_TOMATE_DIRECT_PRINT ??
+    import.meta.env.VITE_NIIMBOT_DIRECT_PRINT ??
+    'true';
+
+  return String(configured).toLowerCase() !== 'false';
 }
 
 export function getDirectPrintSupport() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-    return { supported: false, reason: 'Bluetooth indisponível neste ambiente.' };
-  }
-
-  if (String(import.meta.env.VITE_NIIMBOT_DIRECT_PRINT || 'true') === 'false') {
     return {
       supported: false,
-      reason: 'A impressão Bluetooth direta foi desativada nesta instalação.',
+      reason: 'Impressão direta indisponível neste ambiente.',
+      preferredTransport: undefined as DirectTransport | undefined,
+    };
+  }
+
+  if (!directPrintEnabled()) {
+    return {
+      supported: false,
+      reason: 'A impressão direta foi desativada nesta instalação.',
+      preferredTransport: undefined as DirectTransport | undefined,
     };
   }
 
   if (!window.isSecureContext) {
     return {
       supported: false,
-      reason: 'A impressão Bluetooth exige acesso por HTTPS.',
+      reason: 'A impressão direta exige HTTPS ou localhost.',
+      preferredTransport: undefined as DirectTransport | undefined,
     };
   }
 
-  if (!navigator.bluetooth) {
+  const hasBle = Boolean(navigator.bluetooth);
+  const hasSerial = Boolean(serialApi());
+
+  if (!hasBle && !hasSerial) {
     return {
       supported: false,
       reason:
-        'Este navegador não oferece impressão Bluetooth direta. Use Chrome ou Edge compatível, ou utilize o PDF térmico.',
+        'Este navegador não oferece Bluetooth BLE nem porta serial. Use Chrome/Edge compatível ou o PDF térmico.',
+      preferredTransport: undefined as DirectTransport | undefined,
     };
   }
 
-  return { supported: true, reason: '' };
+  return {
+    supported: true,
+    reason: '',
+    preferredTransport: hasSerial && !isMobileDevice() ? ('serial' as const) : ('ble' as const),
+  };
 }
 
 function parseExtraData(label: Label): LabelExtraData {
@@ -136,7 +209,7 @@ function formatDate(value: unknown) {
   if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
 
   const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return String(value);
+  if (Number.isNaN(date.getTime())) return raw;
 
   return date.toLocaleDateString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
@@ -152,11 +225,13 @@ function formatTemperature(value: unknown) {
   return Number.isFinite(numeric) ? `${numeric.toLocaleString('pt-BR')} °C` : String(value);
 }
 
-function fitText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number
-) {
+function asText(value: unknown) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ');
+  return String(value);
+}
+
+function fitText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
   if (context.measureText(text).width <= maxWidth) return text;
 
   let result = text;
@@ -167,105 +242,414 @@ function fitText(
   return `${result}…`;
 }
 
-function renderLabelCanvas(label: Label, metadata: PrinterModelMeta) {
-  const width = metadata.printheadPixels;
-  const height = Math.round((metadata.dpi * 30) / 25.4);
-  const scale = width / 384;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+function wrapText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number
+) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
 
-  const context = canvas.getContext('2d', { alpha: false });
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || context.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    lines.push(current);
+    current = word;
+
+    if (lines.length === maxLines - 1) break;
+  }
+
+  if (current && lines.length < maxLines) lines.push(current);
+
+  const consumed = lines.join(' ').length;
+  if (consumed < text.trim().length && lines.length) {
+    lines[lines.length - 1] = fitText(context, `${lines[lines.length - 1]}…`, maxWidth);
+  }
+
+  return lines.length ? lines : ['PRODUTO'];
+}
+
+function collectRows(label: Label): Array<[string, string]> {
+  const extra = parseExtraData(label);
+  const rows: Array<[string, string]> = [
+    [labelBaseDateName(label.type), formatDateTime(label.openedAt)],
+    [label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade', formatDateTime(label.expiresAt)],
+    ['Responsável', label.responsibleName || '—'],
+    ['Conservação', conservationName(label.conservationMode)],
+  ];
+
+  const push = (title: string, value: unknown) => {
+    const text = asText(value).trim();
+    if (text) rows.push([title, text]);
+  };
+
+  if (label.type === 'ARMAZENAMENTO_CARNES') {
+    push('Tipo de carne', extra.meatType);
+    push('MAPA/SIF', extra.mapaSif);
+    push('Recebimento', formatDate(extra.receiptDate));
+    push('Temperatura', formatTemperature(extra.receivingTemperatureC));
+    push('Armazenamento', extra.storageType);
+  }
+
+  if (label.type === 'AMOSTRAS') {
+    push('Restaurante', extra.restaurantName);
+    push('Turno', extra.sampleShift);
+    push(
+      'Coleta',
+      `${formatDate(extra.collectionDate)} ${asText(extra.collectionTime)}`.trim()
+    );
+  }
+
+  if (label.type === 'PRODUTO_QUIMICO') {
+    push('Finalidade', extra.chemicalPurpose);
+    push('Diluição', [extra.dilutionMl, extra.dilutionLiters].filter(Boolean).join(' / '));
+    push('Validade química', formatDate(extra.chemicalValidity));
+  }
+
+  if (label.type === 'NAO_CONFORME') {
+    push('Não conformidade', extra.nonConformityReasons);
+    push('Ação tomada', extra.actionTaken);
+  }
+
+  if (label.type === 'DESCONGELAMENTO_DESSALGUE') {
+    push('Método', extra.thawingMethod);
+  }
+
+  push('Marca', label.brand);
+  push('Fornecedor', label.supplier);
+  push('Lote', label.batch);
+  push('Quantidade', label.quantity);
+  push('Observações', label.observations);
+
+  return rows.slice(0, 11);
+}
+
+function renderLabelCanvas(label: Label) {
+  const canvas = document.createElement('canvas');
+  canvas.width = LABEL_WIDTH_DOTS;
+  canvas.height = LABEL_HEIGHT_DOTS;
+
+  const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
   if (!context) throw new Error('O navegador não conseguiu preparar a etiqueta.');
 
-  const px = (value: number) => Math.max(1, Math.round(value * scale));
-  const extra = parseExtraData(label);
-
+  const margin = 28;
+  const contentWidth = canvas.width - margin * 2;
   context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, width, height);
-  context.fillStyle = '#000000';
-  context.fillRect(0, 0, width, px(34));
-
-  context.textBaseline = 'middle';
-  context.textAlign = 'left';
-  context.fillStyle = '#ffffff';
-  context.font = `700 ${px(13)}px Arial, sans-serif`;
-  context.fillText(
-    fitText(context, typeName(label.type), width - px(24)),
-    px(12),
-    px(17)
-  );
-
-  context.fillStyle = '#000000';
-  context.textAlign = 'center';
-  context.font = `900 ${px(25)}px Arial, sans-serif`;
-  context.fillText(
-    fitText(context, label.productName || 'Produto', width - px(24)),
-    width / 2,
-    px(57)
-  );
-
+  context.fillRect(0, 0, canvas.width, canvas.height);
   context.strokeStyle = '#000000';
-  context.lineWidth = px(1);
-  context.beginPath();
-  context.moveTo(px(10), px(76));
-  context.lineTo(width - px(10), px(76));
-  context.stroke();
+  context.lineWidth = 3;
+  context.strokeRect(margin, margin, contentWidth, canvas.height - margin * 2);
 
-  const receivingTemperature = formatTemperature(extra.receivingTemperatureC);
-  const rows: Array<[string, string]> =
-    label.type === 'ARMAZENAMENTO_CARNES'
-      ? [
-          ['Data de recebimento', formatDate(extra.receiptDate)],
-          ['Temperatura', receivingTemperature || 'Não registrada'],
-          ['Validade', formatDateTime(label.expiresAt)],
-          ['Responsável', label.responsibleName || '—'],
-        ]
-      : [
-          [labelBaseDateName(label.type), formatDateTime(label.openedAt)],
-          [label.type === 'AMOSTRAS' ? 'Descarte' : 'Validade', formatDateTime(label.expiresAt)],
-          ['Responsável', label.responsibleName || '—'],
-          ['Conservação', conservationName(label.conservationMode)],
-        ];
+  context.fillStyle = '#000000';
+  context.fillRect(margin, margin, contentWidth, 82);
+  context.fillStyle = '#ffffff';
+  context.textBaseline = 'middle';
+  context.textAlign = 'center';
+  context.font = '700 25px Arial, sans-serif';
+  context.fillText(fitText(context, typeName(label.type), contentWidth - 32), canvas.width / 2, 69);
 
-  const columnWidth = (width - px(30)) / 2;
-  rows.forEach(([title, value], index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const x = px(10) + column * (columnWidth + px(10));
-    const y = px(88 + row * 55);
-
-    context.textAlign = 'left';
-    context.fillStyle = '#000000';
-    context.font = `700 ${px(11)}px Arial, sans-serif`;
-    context.fillText(fitText(context, title, columnWidth), x, y);
-    context.font = `500 ${px(14)}px Arial, sans-serif`;
-    context.fillText(fitText(context, value, columnWidth), x, y + px(18));
+  context.fillStyle = '#000000';
+  context.font = '900 46px Arial, sans-serif';
+  const titleLines = wrapText(context, label.productName || 'Produto', contentWidth - 56, 2);
+  titleLines.forEach((line, index) => {
+    context.fillText(line, canvas.width / 2, 142 + index * 52);
   });
 
-  const detailParts = [
-    label.batch ? `Lote ${label.batch}` : '',
-    label.quantity || '',
-    label.brand || '',
-  ].filter(Boolean);
-
+  const dividerY = titleLines.length > 1 ? 216 : 190;
   context.beginPath();
-  context.moveTo(px(10), height - px(31));
-  context.lineTo(width - px(10), height - px(31));
+  context.moveTo(margin + 20, dividerY);
+  context.lineTo(canvas.width - margin - 20, dividerY);
+  context.lineWidth = 3;
   context.stroke();
 
+  const rows = collectRows(label);
+  const rowsTop = dividerY + 18;
+  const footerTop = canvas.height - 96;
+  const rowHeight = Math.floor((footerTop - rowsTop) / Math.max(rows.length, 1));
+  const titleWidth = 230;
+
+  rows.forEach(([title, value], index) => {
+    const top = rowsTop + index * rowHeight;
+    const baseline = top + rowHeight / 2;
+
+    if (index > 0) {
+      context.beginPath();
+      context.moveTo(margin + 18, top);
+      context.lineTo(canvas.width - margin - 18, top);
+      context.lineWidth = 1;
+      context.strokeStyle = '#b0b0b0';
+      context.stroke();
+    }
+
+    context.fillStyle = '#000000';
+    context.textAlign = 'left';
+    context.font = '700 23px Arial, sans-serif';
+    context.fillText(fitText(context, title, titleWidth), margin + 24, baseline);
+    context.textAlign = 'right';
+    context.font = '600 25px Arial, sans-serif';
+    context.fillText(
+      fitText(context, value || '—', contentWidth - titleWidth - 68),
+      canvas.width - margin - 24,
+      baseline
+    );
+  });
+
+  context.beginPath();
+  context.moveTo(margin + 18, footerTop);
+  context.lineTo(canvas.width - margin - 18, footerTop);
+  context.lineWidth = 2;
+  context.setLineDash([8, 6]);
+  context.strokeStyle = '#000000';
+  context.stroke();
+  context.setLineDash([]);
+
   context.textAlign = 'left';
-  context.font = `600 ${px(9)}px Arial, sans-serif`;
-  context.fillText(
-    fitText(context, detailParts.join(' • ') || 'SafeKitchen Smart', width - px(100)),
-    px(10),
-    height - px(17)
-  );
+  context.font = '700 20px Arial, sans-serif';
+  context.fillText('SafeKitchen Smart', margin + 24, canvas.height - 58);
   context.textAlign = 'right';
-  context.font = `500 ${px(8)}px Arial, sans-serif`;
-  context.fillText(label.id.slice(-10), width - px(10), height - px(17));
+  context.font = '500 17px Arial, sans-serif';
+  context.fillText(label.id, canvas.width - margin - 24, canvas.height - 58);
+
+  if (label.status === 'CANCELADA') {
+    context.save();
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.rotate(-Math.PI / 6);
+    context.globalAlpha = 0.24;
+    context.textAlign = 'center';
+    context.font = '900 100px Arial, sans-serif';
+    context.fillText('CANCELADA', 0, 0);
+    context.restore();
+  }
 
   return canvas;
+}
+
+function canvasToBitmap(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+  if (!context) throw new Error('Não foi possível ler a prévia da etiqueta.');
+
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const bytesPerRow = Math.ceil(canvas.width / 8);
+  const bitmap = new Uint8Array(bytesPerRow * canvas.height);
+  let darkPixels = 0;
+
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const pixelIndex = (y * canvas.width + x) * 4;
+      const luminance =
+        data[pixelIndex] * 0.2126 +
+        data[pixelIndex + 1] * 0.7152 +
+        data[pixelIndex + 2] * 0.0722;
+
+      if (luminance < 168) {
+        bitmap[y * bytesPerRow + Math.floor(x / 8)] |= 0x80 >> (x % 8);
+        darkPixels += 1;
+      }
+    }
+  }
+
+  if (darkPixels < 1_000) {
+    throw new Error('A etiqueta ficou sem conteúdo e não foi enviada à impressora.');
+  }
+
+  return { bitmap, bytesPerRow, darkPixels };
+}
+
+function encodeAscii(value: string) {
+  return new TextEncoder().encode(value);
+}
+
+function concatBytes(...parts: Uint8Array[]) {
+  const length = parts.reduce((total, part) => total + part.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+
+  parts.forEach((part) => {
+    result.set(part, offset);
+    offset += part.length;
+  });
+
+  return result;
+}
+
+function createTsplJob(canvas: HTMLCanvasElement) {
+  const { bitmap, bytesPerRow, darkPixels } = canvasToBitmap(canvas);
+  const setupCommands =
+    [
+      `SIZE ${LABEL_WIDTH_MM} mm,${LABEL_HEIGHT_MM} mm`,
+      `GAP ${LABEL_GAP_MM} mm,0 mm`,
+      'SPEED 5',
+      'DENSITY 8',
+      'DIRECTION 1,0',
+      'REFERENCE 0,0',
+      'CLS',
+    ].join('\r\n') + '\r\n';
+  const header = encodeAscii(
+    `${setupCommands}BITMAP 0,0,${bytesPerRow},${LABEL_HEIGHT_DOTS},0,`
+  );
+  const footer = encodeAscii('\r\nPRINT 1,1\r\n');
+
+  return {
+    payload: concatBytes(header, bitmap, footer),
+    darkPixels,
+  };
+}
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function findBleWriteCharacteristic(server: BluetoothRemoteGATTServer) {
+  for (const serviceUuid of BLE_SERVICE_UUIDS) {
+    try {
+      const service = await server.getPrimaryService(serviceUuid);
+      const characteristics = await service.getCharacteristics();
+      const writable =
+        characteristics.find((item) => item.properties.writeWithoutResponse) ||
+        characteristics.find((item) => item.properties.write);
+
+      if (writable) return writable;
+    } catch {
+      // O módulo pode expor apenas um dos serviços opcionais autorizados.
+    }
+  }
+
+  throw new Error(
+    'A MDK-022 foi encontrada, mas o canal BLE de impressão FFF0/FFF2 não foi exposto. Use o Chrome/Edge no computador pelo Bluetooth SPP/USB ou o PDF térmico.'
+  );
+}
+
+async function connectBle() {
+  if (
+    bleDevice?.gatt?.connected &&
+    bleCharacteristic?.service.device.gatt?.connected
+  ) {
+    return bleCharacteristic;
+  }
+
+  bleDevice = await navigator.bluetooth.requestDevice({
+    filters: [{ name: MODEL }, { namePrefix: 'MDK-022' }, { namePrefix: 'MDK' }],
+    optionalServices: BLE_SERVICE_UUIDS,
+  });
+
+  const gatt = bleDevice.gatt;
+  if (!gatt) {
+    throw new Error('A impressora selecionada não disponibilizou conexão BLE.');
+  }
+
+  const selectedDevice = bleDevice;
+  selectedDevice.addEventListener('gattserverdisconnected', () => {
+    if (bleDevice === selectedDevice) {
+      bleCharacteristic = null;
+      bleChunkSize = null;
+    }
+  });
+
+  const server = await gatt.connect();
+  bleCharacteristic = await findBleWriteCharacteristic(server);
+  bleChunkSize = null;
+  return bleCharacteristic;
+}
+
+async function writeBleChunk(
+  characteristic: BluetoothRemoteGATTCharacteristic,
+  chunk: Uint8Array
+) {
+  const value = new ArrayBuffer(chunk.byteLength);
+  new Uint8Array(value).set(chunk);
+
+  if (characteristic.properties.writeWithoutResponse) {
+    await characteristic.writeValueWithoutResponse(value);
+    return;
+  }
+
+  await characteristic.writeValueWithResponse(value);
+}
+
+async function detectBleChunkSize(characteristic: BluetoothRemoteGATTCharacteristic) {
+  if (bleChunkSize) return bleChunkSize;
+
+  for (const size of [180, 120, 64, 20]) {
+    try {
+      const harmlessProbe = new Uint8Array(size);
+      harmlessProbe.fill(0x0a);
+      await writeBleChunk(characteristic, harmlessProbe);
+      bleChunkSize = size;
+      return size;
+    } catch (error) {
+      if (size === 20) throw error;
+    }
+  }
+
+  return 20;
+}
+
+async function writeBle(payload: Uint8Array) {
+  const characteristic = await connectBle();
+  const chunkSize = await detectBleChunkSize(characteristic);
+
+  for (let offset = 0, chunkIndex = 0; offset < payload.length; offset += chunkSize) {
+    const chunk = payload.slice(offset, Math.min(offset + chunkSize, payload.length));
+    await writeBleChunk(characteristic, chunk);
+    chunkIndex += 1;
+
+    if (characteristic.properties.writeWithoutResponse && chunkIndex % 12 === 0) {
+      await sleep(4);
+    }
+  }
+}
+
+async function connectSerial() {
+  const api = serialApi();
+  if (!api) throw new Error('A porta serial não está disponível neste navegador.');
+
+  if (serialPort?.writable) return serialPort;
+
+  // Sem filtro, o Chrome mostra tanto USB quanto o perfil Bluetooth SPP já
+  // emparelhado, que é exatamente o conjunto de interfaces da MDK-022.
+  serialPort = await api.requestPort();
+
+  await serialPort.open({
+    baudRate: 115_200,
+    dataBits: 8,
+    stopBits: 1,
+    parity: 'none',
+    bufferSize: 1_048_576,
+    flowControl: 'none',
+  });
+
+  return serialPort;
+}
+
+async function writeSerial(payload: Uint8Array) {
+  const port = await connectSerial();
+  if (!port.writable) throw new Error('A porta da impressora não está disponível para escrita.');
+
+  const writer = port.writable.getWriter();
+
+  try {
+    const chunkSize = 16_384;
+    for (let offset = 0; offset < payload.length; offset += chunkSize) {
+      await writer.write(payload.slice(offset, Math.min(offset + chunkSize, payload.length)));
+    }
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+function resolveTransport(): DirectTransport {
+  const support = getDirectPrintSupport();
+  if (!support.supported || !support.preferredTransport) {
+    throw new Error(support.reason);
+  }
+
+  return support.preferredTransport;
 }
 
 function directPrintError(error: unknown) {
@@ -275,31 +659,49 @@ function directPrintError(error: unknown) {
     }
 
     if (error.name === 'SecurityError') {
-      return new Error('O navegador bloqueou o Bluetooth. Abra o sistema por HTTPS e tente novamente.');
+      return new Error('O navegador bloqueou o acesso à impressora. Abra o sistema por HTTPS.');
     }
 
     if (error.name === 'NetworkError') {
       return new Error(
-        'Não foi possível conectar à B21. Ligue a impressora, aproxime-a e feche o aplicativo NIIMBOT antes de tentar novamente.'
+        'Não foi possível conectar à Tomate MDK-022. Feche o Print-Label/BarTender, confirme que a impressora está ligada e tente novamente.'
+      );
+    }
+
+    if (error.name === 'InvalidStateError') {
+      return new Error(
+        'A porta da MDK-022 já está em uso. Feche outros aplicativos de impressão e tente novamente.'
       );
     }
   }
 
   const message = error instanceof Error ? error.message : String(error || '');
-  if (/gatt|channel|characteristic|disconnect/i.test(message)) {
+  if (/gatt|channel|characteristic|disconnect|serial|port|network/i.test(message)) {
     return new Error(
-      'A conexão Bluetooth com a B21 foi interrompida. Feche o aplicativo NIIMBOT, reinicie a impressora e tente novamente.'
+      message ||
+        'A conexão com a Tomate MDK-022 foi interrompida. Reinicie a impressora e tente novamente.'
     );
   }
 
   if (/paper|lack|label/i.test(message)) {
-    return new Error('A B21 informou um problema com a etiqueta ou falta de papel.');
+    return new Error('A MDK-022 informou falta de papel ou problema na mídia GAP.');
   }
 
-  return new Error(message || 'Não foi possível imprimir diretamente na B21.');
+  return new Error(message || 'Não foi possível imprimir diretamente na Tomate MDK-022.');
 }
 
-export async function printDirectToNiimbot(
+async function resetConnections() {
+  if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
+  bleCharacteristic = null;
+  bleChunkSize = null;
+
+  if (serialPort) {
+    await serialPort.close().catch(() => undefined);
+    serialPort = null;
+  }
+}
+
+export async function printDirectToTomate(
   labels: Label[],
   onProgress?: (progress: DirectPrintProgress) => void
 ): Promise<DirectPrintResult> {
@@ -307,103 +709,91 @@ export async function printDirectToNiimbot(
   if (!support.supported) throw new Error(support.reason);
   if (!labels.length) throw new Error('Nenhuma etiqueta foi selecionada.');
   if (labels.length > MAX_DIRECT_PAGES) {
-    throw new Error(`Imprima no máximo ${MAX_DIRECT_PAGES} etiquetas por lote Bluetooth.`);
+    throw new Error(`Imprima no máximo ${MAX_DIRECT_PAGES} etiquetas por lote direto.`);
   }
+  if (activeJob) throw new Error('Já existe um trabalho de impressão em andamento.');
 
-  const printer = client();
-  let printTask: ReturnType<typeof printer.abstraction.newPrintTask> | null = null;
-  let finished = false;
+  activeJob = true;
+  const jobId = `${Date.now().toString(36)}-${++jobSequence}`;
+  const frozenLabels = [...labels];
+  const transport = resolveTransport();
 
   try {
+    console.info(`[PRINT ${jobId}] clique recebido; etiquetas=${frozenLabels.length}`);
     onProgress?.({
       stage: 'connecting',
-      message: 'Selecione a NIIMBOT B21 na janela do Bluetooth…',
+      message:
+        transport === 'serial'
+          ? 'Selecione a porta da Tomate MDK-022 (Bluetooth ou USB)…'
+          : 'Selecione a Tomate MDK-022 na janela do Bluetooth…',
+      total: frozenLabels.length,
     });
 
-    const connection = printer.isConnected()
-      ? { deviceName: 'NIIMBOT B21' }
-      : await printer.connect();
-
-    let metadata = printer.getModelMetadata();
-    if (!metadata) {
-      await printer.fetchPrinterInfo();
-      metadata = printer.getModelMetadata();
-    }
-
-    if (!metadata || !B21_MODELS.has(metadata.model)) {
-      const detected = metadata?.model || 'desconhecido';
-      throw new Error(`Impressora ${detected} detectada. Este perfil foi validado para a família B21.`);
-    }
-
-    const taskName = printer.getPrintTaskType();
-    if (!taskName) {
-      throw new Error(`O protocolo da ${metadata.model} não foi reconhecido.`);
-    }
+    if (transport === 'serial') await connectSerial();
+    else await connectBle();
 
     onProgress?.({
       stage: 'preparing',
-      message: `Preparando ${labels.length} etiqueta(s) para ${metadata.model}…`,
-      total: labels.length,
+      message: `Preparando ${frozenLabels.length} etiqueta(s) TSPL em 102 × 152 mm…`,
+      total: frozenLabels.length,
     });
 
-    printTask = printer.abstraction.newPrintTask(taskName, {
-      totalPages: labels.length,
-      density: metadata.densityDefault,
-      labelType: NiimbotLabelType.WithGaps,
-      statusTimeoutMs: Math.max(15_000, labels.length * 5_000),
-      pageTimeoutMs: 15_000,
-    });
+    for (let index = 0; index < frozenLabels.length; index += 1) {
+      const canvas = renderLabelCanvas(frozenLabels[index]);
+      const { payload, darkPixels } = createTsplJob(canvas);
 
-    await printTask.printInit();
-
-    for (let index = 0; index < labels.length; index += 1) {
+      console.info(
+        `[PRINT ${jobId}] página=${index + 1}/${frozenLabels.length}; canvas=${canvas.width}x${canvas.height}; gap=${LABEL_GAP_MM}mm; pixelsEscuros=${darkPixels}; bytes=${payload.length}; PRINT=1,1`
+      );
       onProgress?.({
         stage: 'printing',
-        message: `Enviando etiqueta ${index + 1} de ${labels.length}…`,
+        message: `Enviando etiqueta ${index + 1} de ${frozenLabels.length} para a MDK-022…`,
         current: index + 1,
-        total: labels.length,
+        total: frozenLabels.length,
       });
 
-      const canvas = renderLabelCanvas(labels[index], metadata);
-      const image = ImageEncoder.encodeCanvas(canvas, metadata.printDirection);
-      await printTask.printPage(image, 1);
-      await printTask.waitForPageFinished();
+      if (transport === 'serial') await writeSerial(payload);
+      else await writeBle(payload);
+
+      // 152 mm a 130 mm/s leva aproximadamente 1,2 s. A pausa impede que um
+      // novo CLS/BITMAP alcance o buffer antes da etiqueta atual terminar.
+      await sleep(1_350);
     }
 
     onProgress?.({
       stage: 'finishing',
-      message: 'Aguardando a B21 concluir a impressão…',
-      current: labels.length,
-      total: labels.length,
+      message: 'Aguardando a MDK-022 concluir o último avanço…',
+      current: frozenLabels.length,
+      total: frozenLabels.length,
     });
+    await sleep(500);
 
-    await printTask.waitForFinished();
-    finished = true;
-
-    const result = {
-      deviceName: connection.deviceName || metadata.model,
-      model: metadata.model,
-      pages: labels.length,
+    const result: DirectPrintResult = {
+      deviceName: bleDevice?.name || MODEL,
+      model: MODEL,
+      pages: frozenLabels.length,
+      transport: transport === 'serial' ? 'Bluetooth/USB serial' : 'Bluetooth BLE',
     };
 
+    console.info(`[PRINT ${jobId}] trabalho concluído; páginas=${result.pages}`);
     onProgress?.({
       stage: 'done',
-      message: `${labels.length} etiqueta(s) enviada(s) para ${result.deviceName}.`,
-      current: labels.length,
-      total: labels.length,
+      message: `${result.pages} etiqueta(s) enviada(s) para ${result.deviceName}.`,
+      current: result.pages,
+      total: result.pages,
     });
 
     return result;
   } catch (error) {
-    if (printTask && !finished) {
-      await printTask.printEnd().catch(() => undefined);
-    }
-    await printer.disconnect().catch(() => undefined);
+    console.error(`[PRINT ${jobId}] falha`, error);
+    await resetConnections();
     throw directPrintError(error);
+  } finally {
+    activeJob = false;
   }
 }
 
-export async function disconnectNiimbot() {
-  if (!bluetoothClient) return;
-  await bluetoothClient.disconnect();
+export async function disconnectTomate() {
+  if (activeJob) throw new Error('Aguarde a impressão terminar antes de desconectar.');
+  await resetConnections();
 }

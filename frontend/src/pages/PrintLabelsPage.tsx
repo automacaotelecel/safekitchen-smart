@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Bluetooth, Printer, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -8,7 +8,8 @@ import { formatPtDate, formatPtDateTime } from '../utils/date';
 import { labelBaseDateName } from '../utils/labels';
 import {
   getDirectPrintSupport,
-  printDirectToNiimbot,
+  printDirectToTomate,
+  TOMATE_PRINT_BUILD,
 } from '../utils/niimbotDirectPrint';
 
 const labelTypeMap: Record<string, string> = {
@@ -149,7 +150,7 @@ function LabelCard({ label }: { label: Label }) {
       </main>
 
       <footer className="print-label-footer">
-        SafeKitchen Smart • {label.id}
+        SafeKitchen Smart - {label.id}
       </footer>
     </article>
   );
@@ -163,9 +164,20 @@ function parsePrintItems(raw: string | null) {
     .map((piece) => {
       const [id, copiesRaw] = piece.split(':');
       const copies = Number(copiesRaw || 1);
+      let decodedId = '';
+
+      try {
+        decodedId = decodeURIComponent(id || '').trim();
+      } catch {
+        // Ignora apenas o item malformado, sem derrubar toda a tela de impressão.
+      }
+
       return {
-        id: decodeURIComponent(id || '').trim(),
-        copies: Number.isFinite(copies) && copies > 0 ? Math.min(copies, 30) : 1,
+        id: decodedId,
+        copies:
+          Number.isFinite(copies) && copies > 0
+            ? Math.min(Math.floor(copies), 30)
+            : 1,
       };
     })
     .filter((item) => item.id);
@@ -180,6 +192,7 @@ export function PrintLabelsPage() {
   const [error, setError] = useState('');
   const [directPrinting, setDirectPrinting] = useState(false);
   const [printMessage, setPrintMessage] = useState('');
+  const directPrintingRef = useRef(false);
   const directSupport = useMemo(() => getDirectPrintSupport(), []);
 
   useEffect(() => {
@@ -224,21 +237,23 @@ export function PrintLabelsPage() {
     loadLabels();
   }, [printItems]);
 
-  async function printOnB21() {
-    if (!labels.length || directPrinting) return;
+  async function printOnTomate() {
+    if (!labels.length || directPrintingRef.current) return;
 
+    directPrintingRef.current = true;
     setDirectPrinting(true);
     setError('');
     setPrintMessage('');
 
     try {
-      await printDirectToNiimbot(labels, (progress) => {
+      await printDirectToTomate(labels, (progress) => {
         setPrintMessage(progress.message);
       });
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : 'Erro ao imprimir diretamente na B21.');
+      setError(err instanceof Error ? err.message : 'Erro ao imprimir diretamente na MDK-022.');
     } finally {
+      directPrintingRef.current = false;
       setDirectPrinting(false);
     }
   }
@@ -257,12 +272,12 @@ export function PrintLabelsPage() {
         {directSupport.supported && (
           <button
             type="button"
-            onClick={printOnB21}
+            onClick={printOnTomate}
             disabled={loading || labels.length === 0 || directPrinting}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-safe-green px-4 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
           >
             <Bluetooth size={17} />
-            {directPrinting ? 'Enviando para B21…' : 'Imprimir direto na B21 (beta)'}
+            {directPrinting ? 'Enviando para MDK-022…' : 'Imprimir direto na Tomate MDK-022'}
           </button>
         )}
 
@@ -289,19 +304,23 @@ export function PrintLabelsPage() {
       <div className="no-print print-page-help">
         {directSupport.supported ? (
           <>
-            <strong>Impressão Bluetooth direta:</strong> ligue a NIIMBOT B21, ative o
-            Bluetooth e feche o aplicativo NIIMBOT. Toque em “Imprimir direto na B21” e
-            selecione a impressora. Faça primeiro um teste com uma etiqueta; o navegador
-            sempre pedirá a confirmação do dispositivo por segurança.
+            <strong>Impressão direta TSPL:</strong> ligue a Tomate MDK-022 e feche o
+            Print-Label/BarTender. No Android, selecione “MDK-022” na janela BLE. No Windows,
+            emparelhe antes a impressora (PIN 0000) e selecione sua porta Bluetooth/USB. Faça
+            o primeiro teste com uma única etiqueta.
           </>
         ) : (
           <>
             <strong>Bluetooth direto indisponível:</strong> {directSupport.reason} No
-            Windows, você também pode instalar o driver oficial e usar “Imprimir pelo
-            navegador” com papel 50 × 30 mm, escala 100% e sem margens.
+            Windows, instale o driver 4BARCODE fornecido com a impressora e use “Imprimir pelo
+            navegador” com papel 102 × 152 mm, escala 100% e sem margens.
           </>
         )}
       </div>
+
+      <p className="no-print mb-3 text-center text-[10px] font-bold text-slate-400">
+        Build de impressão: {TOMATE_PRINT_BUILD}
+      </p>
 
       {loading && <p className="no-print print-page-status">Preparando etiquetas...</p>}
       {printMessage && !error && (
