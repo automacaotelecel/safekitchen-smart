@@ -53,8 +53,8 @@ type SerialApi = {
 };
 
 const MODEL = 'MDK-022' as const;
-const LABEL_WIDTH_MM = 102;
-const LABEL_HEIGHT_MM = 152;
+const LABEL_WIDTH_MM = 50;
+const LABEL_HEIGHT_MM = 30;
 const configuredGap = Number(import.meta.env.VITE_TOMATE_LABEL_GAP_MM ?? 3);
 const LABEL_GAP_MM =
   Number.isFinite(configuredGap) && configuredGap >= 0.5 && configuredGap <= 10
@@ -65,7 +65,7 @@ const LABEL_WIDTH_DOTS = LABEL_WIDTH_MM * DOTS_PER_MM;
 const LABEL_HEIGHT_DOTS = LABEL_HEIGHT_MM * DOTS_PER_MM;
 const MAX_DIRECT_PAGES = 30;
 const FEASYCOM_SERVICE_UUID = 0xfff0;
-const BUILD_ID = 'MDK022-2026-08-20-01';
+const BUILD_ID = 'MDK022-50X30-2026-08-28-02';
 
 // A foto de autodiagnóstico informa BLE e SPP. FFF0/FFF2 é o perfil transparente
 // padrão documentado pela Feasycom; os UUIDs adicionais cobrem outros módulos
@@ -242,39 +242,6 @@ function fitText(context: CanvasRenderingContext2D, text: string, maxWidth: numb
   return `${result}…`;
 }
 
-function wrapText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxLines: number
-) {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (!current || context.measureText(candidate).width <= maxWidth) {
-      current = candidate;
-      continue;
-    }
-
-    lines.push(current);
-    current = word;
-
-    if (lines.length === maxLines - 1) break;
-  }
-
-  if (current && lines.length < maxLines) lines.push(current);
-
-  const consumed = lines.join(' ').length;
-  if (consumed < text.trim().length && lines.length) {
-    lines[lines.length - 1] = fitText(context, `${lines[lines.length - 1]}…`, maxWidth);
-  }
-
-  return lines.length ? lines : ['PRODUTO'];
-}
-
 function collectRows(label: Label): Array<[string, string]> {
   const extra = parseExtraData(label);
   const rows: Array<[string, string]> = [
@@ -338,41 +305,45 @@ function renderLabelCanvas(label: Label) {
   const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
   if (!context) throw new Error('O navegador não conseguiu preparar a etiqueta.');
 
-  const margin = 28;
+  const margin = 7;
   const contentWidth = canvas.width - margin * 2;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.strokeStyle = '#000000';
-  context.lineWidth = 3;
+  context.lineWidth = 2;
   context.strokeRect(margin, margin, contentWidth, canvas.height - margin * 2);
 
+  // Em 50 x 30 mm não usamos uma faixa preta no cabeçalho: além de economizar
+  // a cabeça térmica, isso mantém o título e os quatro campos essenciais legíveis.
   context.fillStyle = '#000000';
-  context.fillRect(margin, margin, contentWidth, 82);
-  context.fillStyle = '#ffffff';
   context.textBaseline = 'middle';
   context.textAlign = 'center';
-  context.font = '700 25px Arial, sans-serif';
-  context.fillText(fitText(context, typeName(label.type), contentWidth - 32), canvas.width / 2, 69);
+  context.font = '800 10px Arial, sans-serif';
+  context.fillText(
+    fitText(context, typeName(label.type), contentWidth - 20),
+    canvas.width / 2,
+    17
+  );
 
-  context.fillStyle = '#000000';
-  context.font = '900 46px Arial, sans-serif';
-  const titleLines = wrapText(context, label.productName || 'Produto', contentWidth - 56, 2);
-  titleLines.forEach((line, index) => {
-    context.fillText(line, canvas.width / 2, 142 + index * 52);
-  });
+  context.font = '900 27px Arial, sans-serif';
+  context.fillText(
+    fitText(context, (label.productName || 'Produto').toUpperCase(), contentWidth - 22),
+    canvas.width / 2,
+    39
+  );
 
-  const dividerY = titleLines.length > 1 ? 216 : 190;
+  const dividerY = 57;
   context.beginPath();
-  context.moveTo(margin + 20, dividerY);
-  context.lineTo(canvas.width - margin - 20, dividerY);
-  context.lineWidth = 3;
+  context.moveTo(margin + 8, dividerY);
+  context.lineTo(canvas.width - margin - 8, dividerY);
+  context.lineWidth = 2;
   context.stroke();
 
-  const rows = collectRows(label);
-  const rowsTop = dividerY + 18;
-  const footerTop = canvas.height - 96;
+  const rows = collectRows(label).slice(0, 4);
+  const rowsTop = dividerY + 3;
+  const footerTop = canvas.height - 31;
   const rowHeight = Math.floor((footerTop - rowsTop) / Math.max(rows.length, 1));
-  const titleWidth = 230;
+  const titleWidth = 112;
 
   rows.forEach(([title, value], index) => {
     const top = rowsTop + index * rowHeight;
@@ -380,41 +351,45 @@ function renderLabelCanvas(label: Label) {
 
     if (index > 0) {
       context.beginPath();
-      context.moveTo(margin + 18, top);
-      context.lineTo(canvas.width - margin - 18, top);
+      context.moveTo(margin + 8, top);
+      context.lineTo(canvas.width - margin - 8, top);
       context.lineWidth = 1;
-      context.strokeStyle = '#b0b0b0';
+      context.strokeStyle = '#777777';
       context.stroke();
     }
 
     context.fillStyle = '#000000';
     context.textAlign = 'left';
-    context.font = '700 23px Arial, sans-serif';
-    context.fillText(fitText(context, title, titleWidth), margin + 24, baseline);
+    context.font = '800 13px Arial, sans-serif';
+    context.fillText(fitText(context, title, titleWidth), margin + 10, baseline);
     context.textAlign = 'right';
-    context.font = '600 25px Arial, sans-serif';
+    context.font = '700 14px Arial, sans-serif';
     context.fillText(
-      fitText(context, value || '—', contentWidth - titleWidth - 68),
-      canvas.width - margin - 24,
+      fitText(context, value || '—', contentWidth - titleWidth - 34),
+      canvas.width - margin - 10,
       baseline
     );
   });
 
   context.beginPath();
-  context.moveTo(margin + 18, footerTop);
-  context.lineTo(canvas.width - margin - 18, footerTop);
-  context.lineWidth = 2;
-  context.setLineDash([8, 6]);
+  context.moveTo(margin + 8, footerTop);
+  context.lineTo(canvas.width - margin - 8, footerTop);
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
   context.strokeStyle = '#000000';
   context.stroke();
   context.setLineDash([]);
 
   context.textAlign = 'left';
-  context.font = '700 20px Arial, sans-serif';
-  context.fillText('SafeKitchen Smart', margin + 24, canvas.height - 58);
+  context.font = '800 10px Arial, sans-serif';
+  context.fillText('SafeKitchen Smart', margin + 10, canvas.height - 17);
   context.textAlign = 'right';
-  context.font = '500 17px Arial, sans-serif';
-  context.fillText(label.id, canvas.width - margin - 24, canvas.height - 58);
+  context.font = '600 8px Arial, sans-serif';
+  context.fillText(
+    fitText(context, label.id, contentWidth - 145),
+    canvas.width - margin - 10,
+    canvas.height - 17
+  );
 
   if (label.status === 'CANCELADA') {
     context.save();
@@ -422,7 +397,7 @@ function renderLabelCanvas(label: Label) {
     context.rotate(-Math.PI / 6);
     context.globalAlpha = 0.24;
     context.textAlign = 'center';
-    context.font = '900 100px Arial, sans-serif';
+    context.font = '900 44px Arial, sans-serif';
     context.fillText('CANCELADA', 0, 0);
     context.restore();
   }
@@ -437,6 +412,10 @@ function canvasToBitmap(canvas: HTMLCanvasElement) {
   const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
   const bytesPerRow = Math.ceil(canvas.width / 8);
   const bitmap = new Uint8Array(bytesPerRow * canvas.height);
+  // O firmware TSPL da MDK-022 usa 0 para aquecer/imprimir e 1 para manter o
+  // ponto branco. A versão anterior enviava essa polaridade invertida, por isso
+  // a etiqueta saía preta com o texto branco.
+  bitmap.fill(0xff);
   let darkPixels = 0;
 
   for (let y = 0; y < canvas.height; y += 1) {
@@ -448,7 +427,7 @@ function canvasToBitmap(canvas: HTMLCanvasElement) {
         data[pixelIndex + 2] * 0.0722;
 
       if (luminance < 168) {
-        bitmap[y * bytesPerRow + Math.floor(x / 8)] |= 0x80 >> (x % 8);
+        bitmap[y * bytesPerRow + Math.floor(x / 8)] &= ~(0x80 >> (x % 8));
         darkPixels += 1;
       }
     }
@@ -734,7 +713,7 @@ export async function printDirectToTomate(
 
     onProgress?.({
       stage: 'preparing',
-      message: `Preparando ${frozenLabels.length} etiqueta(s) TSPL em 102 × 152 mm…`,
+      message: `Preparando ${frozenLabels.length} etiqueta(s) TSPL em 50 × 30 mm…`,
       total: frozenLabels.length,
     });
 
@@ -755,9 +734,9 @@ export async function printDirectToTomate(
       if (transport === 'serial') await writeSerial(payload);
       else await writeBle(payload);
 
-      // 152 mm a 130 mm/s leva aproximadamente 1,2 s. A pausa impede que um
+      // 30 mm a 130 mm/s leva aproximadamente 0,23 s. A margem extra impede que um
       // novo CLS/BITMAP alcance o buffer antes da etiqueta atual terminar.
-      await sleep(1_350);
+      await sleep(500);
     }
 
     onProgress?.({
